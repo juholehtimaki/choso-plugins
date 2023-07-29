@@ -8,7 +8,6 @@ import com.example.PaistiUtils.PathFinding.WebWalker;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.Player;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.config.ConfigManager;
@@ -124,6 +123,10 @@ public class AstralsPlugin extends Plugin {
             Lunar.NPC_CONTACT.cast("Dark Mage");
             Utility.sleepUntilCondition(Dialog::isConversationWindowUp);
             Utility.sendGameMessage("Attempted to repair pouches", "PAstrals");
+            var dialogOptions = new String[]{
+                    "repair",
+            };
+            Dialog.handleGenericDialog(dialogOptions);
         }
 
         var bank = Bank.openBank();
