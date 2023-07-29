@@ -25,6 +25,6 @@ public interface NmzAfkPluginConfig extends Config {
             max = 15
     )
     default int drinkPotionsBelowBoost() {
-        return 0;
+        return 9;
     }
 }
