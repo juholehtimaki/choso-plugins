@@ -1,7 +1,10 @@
 package com.example.PWoodcutter;
+
+import com.example.LogBurnerPlugin.FiremakingUtils;
 import com.example.PaistiUtils.API.*;
 import com.example.PaistiUtils.Framework.ThreadedScriptRunner;
 import com.example.PaistiUtils.PaistiUtils;
+import com.example.PaistiUtils.PathFinding.WebWalker;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
@@ -14,10 +17,13 @@ import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginManager;
+import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.HotkeyListener;
 
+import java.util.ArrayList;
+
 @Slf4j
-@PluginDescriptor(name = "PWoodcutter", description = "Power woodcuts selected tree", enabledByDefault = false, tags = {"Woodcutting", "Choso"})
+@PluginDescriptor(name = "PWoodcutter", description = "Power woodcuts selected tree", enabledByDefault = false, tags = {"Woodcutting", "Paisti"})
 public class WoodcutterPlugin extends Plugin {
 
     @Inject
@@ -29,7 +35,14 @@ public class WoodcutterPlugin extends Plugin {
     ThreadedScriptRunner runner = new ThreadedScriptRunner();
     private HotkeyListener startHotkeyListener = null;
 
+    ArrayList<ArrayList<WorldPoint>> firemakingLanes = null;
+
+    private long lastActionTime = 0;
     WorldPoint startingLocation;
+    @Inject
+    private WoodcutterPluginSceneOverlay sceneOverlay;
+    @Inject
+    OverlayManager overlayManager;
 
     @Provides
     public WoodcutterPluginConfig getConfig(ConfigManager configManager) {
@@ -44,6 +57,7 @@ public class WoodcutterPlugin extends Plugin {
             pluginManager.setPluginEnabled(this, false);
             return;
         }
+        overlayManager.add(sceneOverlay);
 
         runner.setLoopAction(() -> {
             this.threadedLoop();
@@ -53,7 +67,7 @@ public class WoodcutterPlugin extends Plugin {
         startHotkeyListener = config.startHotkey() != null ? new HotkeyListener(() -> config.startHotkey()) {
             @Override
             public void hotkeyPressed() {
-                PaistiUtils.getOffThreadExecutor().submit(() -> {
+                PaistiUtils.runOnExecutor(() -> {
                     if (runner.isRunning()) {
                         stop();
                     } else {
@@ -70,6 +84,7 @@ public class WoodcutterPlugin extends Plugin {
 
     @Override
     protected void shutDown() throws Exception {
+        overlayManager.remove(sceneOverlay);
         runner.stop();
     }
 
@@ -77,19 +92,28 @@ public class WoodcutterPlugin extends Plugin {
         if (Utility.isLoggedIn()) {
             Utility.sendGameMessage("Stopped", "PWoodcutter");
         }
+        firemakingLanes = null;
         runner.stop();
     }
 
     private boolean handleChopping() {
-        if (!Utility.isIdle()) {
+        if (!Utility.isIdle() || Inventory.isFull()) {
             return false;
         }
-        var treeToChop = TileObjects.search().withName(config.selectedTree().toString()).withAction("Chop down").nearestToPlayer();
+        if (Walking.getPlayerLocation().distanceTo(startingLocation) > config.treeRangeRadius() + 10) {
+            WebWalker.walkToExact(startingLocation);
+        }
+        if (System.currentTimeMillis() - lastActionTime > 60000 && Walking.getPlayerLocation().distanceTo(startingLocation) > config.treeRangeRadius() - 5) {
+            WebWalker.walkTo(startingLocation);
+        }
+        var treeToChop = TileObjects.search().withName(config.selectedTree().toString()).withAction("Chop down").nearestToPlayerTrueDistance();
         if (treeToChop.isEmpty() || startingLocation.distanceTo(treeToChop.get().getWorldLocation()) > config.treeRangeRadius()) {
             return false;
         }
         Interaction.clickTileObject(treeToChop.get(), "Chop down");
-        if (Utility.sleepUntilCondition(Utility::isIdle, 5000)){
+        Utility.sleepGaussian(1200, 1800);
+        if (Utility.sleepUntilCondition(Utility::isIdle, 5000)) {
+            lastActionTime = System.currentTimeMillis();
             Utility.sleepGaussian(500, 2000);
             return true;
         }
@@ -100,12 +124,44 @@ public class WoodcutterPlugin extends Plugin {
         if (!Inventory.isFull()) return false;
         var logs = Inventory.search().nameContains("logs").result();
         boolean logsDropped = false;
-        for(var log : logs) {
+        for (var log : logs) {
             Interaction.clickWidget(log, "Drop");
             Utility.sleepGaussian(200, 400);
             logsDropped = true;
         }
         return logsDropped;
+    }
+
+    private boolean handleFullInventory() {
+        if (!Inventory.isFull()) return false;
+        lastActionTime = System.currentTimeMillis();
+
+        if (config.bankLogsInsteadOfDrop()) {
+            if (!WebWalker.walkToNearestBank()) {
+                Utility.sendGameMessage("Failed to walk to nearest bank", "PWoodcutter");
+                stop();
+                return false;
+            }
+            if (Bank.openBank()) {
+                var logs = Inventory.search().matchesWildCardNoCase("*logs").onlyUnnoted().first();
+                if (logs.isPresent()) {
+                    Bank.depositAll(logs.get());
+                }
+                Utility.sleepUntilCondition(() -> Inventory.getItemAmountWildcard("*logs") == 0);
+                return true;
+            }
+        }
+        if (config.burnLogsInsteadOfDrop()) {
+            try {
+                FiremakingUtils.fireMakeAllLogsOnLanes(firemakingLanes);
+                return true;
+            } catch (RuntimeException e) {
+                Utility.sendGameMessage("Error when burning logs: " + e.getMessage(), "PWoodcutter");
+                return false;
+            }
+        }
+
+        return handleDropping();
     }
 
     public boolean playerIsWithinSelectedRange() {
@@ -125,7 +181,7 @@ public class WoodcutterPlugin extends Plugin {
             startHotkeyListener = config.startHotkey() != null ? new HotkeyListener(() -> config.startHotkey()) {
                 @Override
                 public void hotkeyPressed() {
-                    PaistiUtils.getOffThreadExecutor().submit(() -> {
+                    PaistiUtils.runOnExecutor(() -> {
                         if (runner.isRunning()) {
                             stop();
                         } else {
@@ -143,8 +199,16 @@ public class WoodcutterPlugin extends Plugin {
 
     private void start() {
         Utility.sendGameMessage("Started", "PWoodcutter");
-        System.out.println();
         startingLocation = Walking.getPlayerLocation();
+        firemakingLanes = null;
+        if (config.burnLogsInsteadOfDrop()) {
+            firemakingLanes = FiremakingUtils.generateFiremakingLanesNearPlayer();
+            if (firemakingLanes == null || firemakingLanes.size() == 0) {
+                Utility.sendGameMessage("Could not generate firemaking lanes", "PWoodcutter");
+                stop();
+                return;
+            }
+        }
         runner.start();
     }
 
@@ -159,15 +223,11 @@ public class WoodcutterPlugin extends Plugin {
                 Utility.sleepGaussian(175, 250);
                 return;
             }
-            if (handleDropping()) {
+            if (handleFullInventory()) {
                 Utility.sleepGaussian(175, 250);
                 return;
             }
-            if (!playerIsWithinSelectedRange()){
-                Utility.sendGameMessage("Stopping since player is not within selected range", "PWoodcutter");
-                stop();
-            }
-            if (playerHasReachedTargetedLevel()){
+            if (playerHasReachedTargetedLevel()) {
                 Utility.sendGameMessage("Stopping since player has reached the targeted level", "PWoodcutter");
                 stop();
             }

@@ -36,6 +36,26 @@ public interface WoodcutterPluginConfig extends Config {
     }
 
     @ConfigItem(
+            keyName = "burnLogsInsteadOfDrop",
+            name = "Burn logs instead of dropping",
+            description = "Burn logs with tinderbox intead of dropping them",
+            position = 26
+    )
+    default boolean burnLogsInsteadOfDrop() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "bankLogsInsteadOfDrop",
+            name = "Bank logs instead of dropping",
+            description = "Bank the logs instead of dropping in the nearest bank",
+            position = 27
+    )
+    default boolean bankLogsInsteadOfDrop() {
+        return false;
+    }
+
+    @ConfigItem(
             keyName = "targetLevel",
             name = "Targeted woodcutting level",
             description = "Level to reach before stopping",
