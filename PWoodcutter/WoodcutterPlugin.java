@@ -23,7 +23,7 @@ import net.runelite.client.util.HotkeyListener;
 import java.util.ArrayList;
 
 @Slf4j
-@PluginDescriptor(name = "PWoodcutter", description = "Power woodcuts selected tree", enabledByDefault = false, tags = {"Woodcutting", "Paisti"})
+@PluginDescriptor(name = "PWoodcutter", description = "Power woodcuts selected tree", enabledByDefault = false, tags = {"Woodcutting", "Choso"})
 public class WoodcutterPlugin extends Plugin {
 
     @Inject
