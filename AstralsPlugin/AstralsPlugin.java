@@ -20,7 +20,7 @@ import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.util.HotkeyListener;
 
 @Slf4j
-@PluginDescriptor(name = "PAstrals", description = "Crafts Astral Runes", enabledByDefault = false, tags = {"Runecrafting", "Choso"})
+@PluginDescriptor(name = "PAstrals", description = "Crafts Astral Runes", enabledByDefault = false, tags = {"Runecrafting", "Paisti"})
 public class AstralsPlugin extends Plugin {
     static final WorldPoint BANK_SPOT = new WorldPoint(2099, 3919, 0);
     static final WorldPoint ASTRAL_ALTAR_SPOT = new WorldPoint(2156, 3863, 0);
@@ -59,7 +59,7 @@ public class AstralsPlugin extends Plugin {
         startHotkeyListener = config.startHotkey() != null ? new HotkeyListener(() -> config.startHotkey()) {
             @Override
             public void hotkeyPressed() {
-                PaistiUtils.getOffThreadExecutor().submit(() -> {
+                PaistiUtils.runOnExecutor(() -> {
                     if (runner.isRunning()) {
                         stop();
                     } else {
@@ -88,10 +88,10 @@ public class AstralsPlugin extends Plugin {
     }
 
     private boolean handleEssenceCrafting() {
-        if(Walking.getPlayerLocation().distanceTo(ASTRAL_ALTAR_SPOT) >= 15){
+        if (Walking.getPlayerLocation().distanceTo(ASTRAL_ALTAR_SPOT) >= 15) {
             WebWalker.walkTo(ASTRAL_ALTAR_SPOT);
         }
-        if (Walking.getPlayerLocation().distanceTo(ASTRAL_ALTAR_SPOT) < 15 && Inventory.search().withName("Pure essence").first().isPresent()){
+        if (Walking.getPlayerLocation().distanceTo(ASTRAL_ALTAR_SPOT) < 15 && Inventory.search().withName("Pure essence").first().isPresent()) {
             var astralAltar = TileObjects.search().withName("Altar").withAction("Craft-rune").nearestToPlayer();
             if (astralAltar.isEmpty()) {
                 return false;
@@ -99,12 +99,12 @@ public class AstralsPlugin extends Plugin {
             Interaction.clickTileObject(astralAltar.get(), "Craft-rune");
             Utility.sleepUntilCondition(() -> Inventory.getItemAmount("Pure essence") == 0, 3000);
             var pouches = Inventory.search().matchesWildCardNoCase("*pouch*").filter(p -> !p.getName().contains("Rune")).result();
-            for(var p : pouches) {
+            for (var p : pouches) {
                 Interaction.clickWidget(p, "Empty");
                 Utility.sleepGaussian(150, 300);
             }
             Utility.sleepUntilCondition(() -> Inventory.getItemAmount("Pure essence") > 0, 3000);
-            if(Inventory.getItemAmount("Pure essence") > 0){
+            if (Inventory.getItemAmount("Pure essence") > 0) {
                 Interaction.clickTileObject(astralAltar.get(), "Craft-rune");
                 Utility.sleepUntilCondition(() -> Inventory.getItemAmount("Pure essence") == 0, 3000);
             }
@@ -115,11 +115,11 @@ public class AstralsPlugin extends Plugin {
     }
 
     private boolean handleBanking() {
-        if(!Bank.isNearBank()) {
+        if (!Bank.isNearBank()) {
             WebWalker.walkTo(BANK_SPOT);
         }
 
-        if (Inventory.getItemAmount(BROKEN_MEDIUM_POUCH_ID) > 0 || Inventory.getItemAmount(BROKEN_LARGE_POUCH_ID) > 0){
+        if (Inventory.getItemAmount(BROKEN_MEDIUM_POUCH_ID) > 0 || Inventory.getItemAmount(BROKEN_LARGE_POUCH_ID) > 0) {
             Lunar.NPC_CONTACT.cast("Dark Mage");
             Utility.sleepUntilCondition(Dialog::isConversationWindowUp);
             Utility.sendGameMessage("Attempted to repair pouches", "PAstrals");
@@ -136,7 +136,7 @@ public class AstralsPlugin extends Plugin {
                 Bank.withdraw("Shark", 1, false);
                 Utility.sleepUntilCondition(() -> Inventory.search().withName("Shark").first().isPresent());
                 var sharks = BankInventory.search().withName("Shark").result();
-                for(var s : sharks) {
+                for (var s : sharks) {
                     Interaction.clickWidget(s, "Eat");
                     Utility.sleepGaussian(150, 300);
                 }
@@ -146,19 +146,19 @@ public class AstralsPlugin extends Plugin {
                 Bank.withdraw("Stamina potion(1)", 1, false);
                 Utility.sleepUntilCondition(() -> Inventory.search().withName("Stamina potion(1)").first().isPresent());
                 var staminaPotions = BankInventory.search().withName("Stamina potion(1)").result();
-                for(var s : staminaPotions) {
+                for (var s : staminaPotions) {
                     Interaction.clickWidget(s, "Drink");
                     Utility.sleepGaussian(150, 300);
                 }
             }
 
             var invEmptySlots = Inventory.getEmptySlots();
-            if (!Bank.withdraw("Pure essence", invEmptySlots, false)){
+            if (!Bank.withdraw("Pure essence", invEmptySlots, false)) {
                 Utility.sendGameMessage("Could not withdraw pure essences", "PAstrals");
                 stop();
             }
             var pouches = BankInventory.search().matchesWildCardNoCase("*pouch*").filter(p -> !p.getName().contains("Rune")).result();
-            for(var p : pouches) {
+            for (var p : pouches) {
                 Interaction.clickWidget(p, "Fill");
                 Utility.sleepGaussian(150, 300);
             }
@@ -166,7 +166,7 @@ public class AstralsPlugin extends Plugin {
             Utility.sleepGaussian(600, 1000);
 
             var invEmptySlotsAfterFillingPouches = Inventory.getEmptySlots();
-            if (!Bank.withdraw("Pure essence", invEmptySlotsAfterFillingPouches, false)){
+            if (!Bank.withdraw("Pure essence", invEmptySlotsAfterFillingPouches, false)) {
                 Utility.sendGameMessage("Could not withdraw pure essences after filling pouches", "PAstrals");
                 stop();
             }
@@ -186,7 +186,7 @@ public class AstralsPlugin extends Plugin {
             startHotkeyListener = config.startHotkey() != null ? new HotkeyListener(() -> config.startHotkey()) {
                 @Override
                 public void hotkeyPressed() {
-                    PaistiUtils.getOffThreadExecutor().submit(() -> {
+                    PaistiUtils.runOnExecutor(() -> {
                         if (runner.isRunning()) {
                             stop();
                         } else {
@@ -214,10 +214,9 @@ public class AstralsPlugin extends Plugin {
                 return;
             }
             Utility.sleepGaussian(300, 500);
-            if (Inventory.getItemAmount("Pure essence") == 0){
+            if (Inventory.getItemAmount("Pure essence") == 0) {
                 handleBanking();
-            }
-            else {
+            } else {
                 handleEssenceCrafting();
             }
         } catch (Exception e) {
