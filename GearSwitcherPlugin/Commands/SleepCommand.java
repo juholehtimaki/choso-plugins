@@ -1,16 +1,16 @@
-package com.example.PvPHelperPlugin.Commands;
+package com.PaistiPlugins.GearSwitcherPlugin.Commands;
 
-import com.example.PaistiUtils.API.Utility;
+import com.PaistiPlugins.PaistiUtils.API.Utility;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class SleepCommand implements PvpHelperCommand {
+public class SleepCommand implements GearSwitcherCommand {
 
     public static final String INSTRUCTION_PREFIX = "SLEEP";
 
     public int sleepTime;
 
-    SleepCommand(int sleepTime){
+    SleepCommand(int sleepTime) {
         this.sleepTime = sleepTime;
     }
 
@@ -28,10 +28,11 @@ public class SleepCommand implements PvpHelperCommand {
     static public SleepCommand deserializeFromString(String serializedString) {
         try {
             String command = serializedString.split(":")[0];
-            if (!command.equalsIgnoreCase(INSTRUCTION_PREFIX)) throw new IllegalArgumentException("Received unknown command");
+            if (!command.equalsIgnoreCase(INSTRUCTION_PREFIX))
+                throw new IllegalArgumentException("Received unknown command");
             int sleepTime = Integer.parseInt(serializedString.split(":")[1].trim());
             return new SleepCommand(sleepTime);
-        } catch(Exception e) {
+        } catch (Exception e) {
             log.error("Failed to deserialize");
         }
         return null;

@@ -1,12 +1,16 @@
-package com.example.PvPHelperPlugin.Commands;
+package com.PaistiPlugins.GearSwitcherPlugin.Commands;
+
+import com.PaistiPlugins.DontObfuscate;
 
 import java.security.InvalidParameterException;
 
-public interface PvpHelperCommand {
+@DontObfuscate
+public interface GearSwitcherCommand {
     boolean execute();
+
     String serializeToString();
 
-    static PvpHelperCommand deserializeFromString(String serialized) {
+    static GearSwitcherCommand deserializeFromString(String serialized) {
         var prefix = serialized.contains(":") ? serialized.split(":")[0].trim() : serialized;
         switch (prefix) {
             case EquipCommand.INSTRUCTION_PREFIX:
@@ -21,6 +25,14 @@ public interface PvpHelperCommand {
                 return SleepCommand.deserializeFromString(serialized);
             case SpellCommand.INSTRUCTION_PREFIX:
                 return SpellCommand.deserializeFromString(serialized);
+            case AutocastCommand.INSTRUCTION_PREFIX:
+                return AutocastCommand.deserializeFromString(serialized);
+            case WaitCommand.INSTRUCTION_PREFIX:
+                return WaitCommand.deserializeFromString(serialized);
+            case UnEquipCommand.INSTRUCTION_PREFIX:
+                return UnEquipCommand.deserializeFromString(serialized);
+            case DisablePrayCommand.INSTRUCTION_PREFIX:
+                return DisablePrayCommand.deserializeFromString(serialized);
             default:
                 throw new InvalidParameterException("Invalid prefix: " + prefix + " in serialized string: " + serialized);
         }

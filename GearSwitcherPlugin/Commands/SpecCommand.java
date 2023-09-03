@@ -1,13 +1,13 @@
-package com.example.PvPHelperPlugin.Commands;
+package com.PaistiPlugins.GearSwitcherPlugin.Commands;
 
-import com.example.PaistiUtils.API.Interaction;
-import com.example.PaistiUtils.API.Utility;
+import com.PaistiPlugins.PaistiUtils.API.Utility;
 
-public class SpecCommand implements PvpHelperCommand {
+public class SpecCommand implements GearSwitcherCommand {
 
     public static final String INSTRUCTION_PREFIX = "SPEC";
 
-    SpecCommand(){}
+    SpecCommand() {
+    }
 
     @Override
     public boolean execute() {
