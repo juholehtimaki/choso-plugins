@@ -25,7 +25,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
-@PluginDescriptor(name = "PGearSwitcher", description = "Gear switching hotkeys / triggers", enabledByDefault = false, tags = {"Paisti", "Combat"})
+@PluginDescriptor(name = "PGearSwitcher", description = "Gear switching hotkeys / triggers", enabledByDefault = false, tags = {"Choso", "Combat"})
 public class GearSwitcherPlugin extends Plugin {
 
     @Inject
