@@ -41,7 +41,7 @@ public class AutoNexPluginScreenOverlay extends OverlayPanel {
                 .rightColor(Color.CYAN)
                 .build());
 
-        var currTarget = plugin.fightNexState.getCurrentTarget();
+        var currTarget = plugin.fightNexState.getDesiredTarget();
         String targetName = currTarget.isPresent() ? currTarget.get().getName() : "unknown";
 
         panelComponent.getChildren().add(LineComponent.builder()
@@ -60,6 +60,17 @@ public class AutoNexPluginScreenOverlay extends OverlayPanel {
                 .right(currPhaseName)
                 .rightColor(Color.CYAN)
                 .build());
+
+        var distanceToNex = plugin.fightNexState.getNexDistance();
+        String currDistanceToNex = distanceToNex.isPresent() ? distanceToNex.get().toString() : "unknown";
+
+        panelComponent.getChildren().add(LineComponent.builder()
+                .left("Distance:")
+                .leftColor(Color.CYAN)
+                .right(currDistanceToNex)
+                .rightColor(Color.CYAN)
+                .build());
+
 
         return super.render(graphics);
     }

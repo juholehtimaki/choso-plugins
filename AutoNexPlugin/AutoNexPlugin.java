@@ -1,8 +1,6 @@
 package com.PaistiPlugins.AutoNexPlugin;
 
-import com.PaistiPlugins.AutoGauntletPlugin.AutoGauntletPluginScreenOverlay;
 import com.PaistiPlugins.PaistiUtils.API.*;
-import com.PaistiPlugins.PaistiUtils.API.AttackTickTracker.AttackTickTracker;
 import com.PaistiPlugins.PaistiUtils.Framework.ThreadedScriptRunner;
 import com.PaistiPlugins.PaistiUtils.PaistiUtils;
 import com.PaistiPlugins.VorkathKillerPlugin.States.State;
@@ -43,9 +41,6 @@ public class AutoNexPlugin extends Plugin {
     private OverlayManager overlayManager;
 
     @Inject
-    AttackTickTracker attackTickTracker;
-
-    @Inject
     EventBus eventBus;
 
     @Inject
@@ -57,7 +52,7 @@ public class AutoNexPlugin extends Plugin {
 
     FightNexState fightNexState;
 
-    private static final WorldPoint NEX_TILE = new WorldPoint(7141, 1235, 0);
+    static final WorldPoint NEX_TILE = new WorldPoint(8677, 83, 0);
 
     @Inject
     private AutoNexPluginScreenOverlay screenOverlay;
@@ -116,10 +111,6 @@ public class AutoNexPlugin extends Plugin {
     }
 
     private void threadedLoop() {
-        if (!playerInsideGodWars()) {
-            Utility.sendGameMessage("Must be inside GWD", "AutoNex");
-            stop();
-        }
         for (var state : states) {
             if (state.shouldExecuteState()) {
                 state.threadedLoop();
@@ -201,6 +192,6 @@ public class AutoNexPlugin extends Plugin {
     }
 
     public boolean isInsideNexRoom() {
-        return Walking.getPlayerLocation().distanceTo(NEX_TILE) < 15;
+        return Walking.getPlayerLocation().distanceTo(NEX_TILE) < 16;
     }
 }
