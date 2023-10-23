@@ -1,34 +1,46 @@
-package com.PaistiPlugins.AutoNexPlugin;
+package com.theplug.AutoNexPlugin;
 
-import com.PaistiPlugins.PaistiUtils.API.*;
-import com.PaistiPlugins.PaistiUtils.Framework.ThreadedScriptRunner;
-import com.PaistiPlugins.PaistiUtils.PaistiUtils;
-import com.PaistiPlugins.VorkathKillerPlugin.States.State;
+import com.theplug.GearSwitcherPlugin.GearSwitcherScript;
+import com.theplug.PaistiUtils.API.*;
+import com.theplug.PaistiUtils.API.AttackTickTracker.AttackTickTracker;
+import com.theplug.PaistiUtils.API.Prayer.PPrayer;
+import com.theplug.PaistiUtils.Framework.ThreadedScriptRunner;
+import com.theplug.PaistiUtils.PathFinding.LocalPathfinder;
+import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.Actor;
-import net.runelite.api.Player;
-import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.*;
 import net.runelite.api.events.ActorDeath;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.widgets.Widget;
-import net.runelite.api.widgets.WidgetInfo;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.config.Keybind;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.HotkeyListener;
 
+import java.awt.*;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
-@PluginDescriptor(name = "AutoNex", description = "Helps with PvP", enabledByDefault = false, tags = {"paisti", "pvp"})
+@PluginDescriptor(name = "AutoNex", description = "Automates Nex", enabledByDefault = false, tags = {"paisti", "nex"})
 public class AutoNexPlugin extends Plugin {
     @Inject
     AutoNexPluginConfig config;
@@ -36,6 +48,9 @@ public class AutoNexPlugin extends Plugin {
     private KeyManager keyManager;
     @Inject
     PluginManager pluginManager;
+
+    @Inject
+    public AttackTickTracker attackTickTracker;
 
     @Inject
     private OverlayManager overlayManager;
@@ -48,16 +63,47 @@ public class AutoNexPlugin extends Plugin {
 
     List<State> states;
 
-    PrepareState prepareState;
+    KillCountState killCountState;
 
     FightNexState fightNexState;
 
-    static final WorldPoint NEX_TILE = new WorldPoint(8677, 83, 0);
+    RestockState restockState;
+
+    static final int NEX_ALTAR = 42965;
+
 
     @Inject
     private AutoNexPluginScreenOverlay screenOverlay;
 
+    @Inject
+    private AutoNexPluginSceneOverlay sceneOverlay;
+
+    @Inject
+    private ConfigManager configManager;
+
     ThreadedScriptRunner runner = new ThreadedScriptRunner();
+
+    @Getter
+    @Setter
+    private int totalKillCount = 0;
+
+    @Getter
+    @Setter
+    private int seenUniqueItems = 0;
+
+    @Getter
+    @Setter
+    private int mvps = 0;
+
+    @Getter
+    @Setter
+    private Boolean stopHasBeenRequested = false;
+
+    @Getter
+    private final AtomicReference<PPrayer> offensivePray = new AtomicReference<>(null);
+
+
+    static final String LOG_OUT_MESSAGE = "you will be logged out in approximately 10 minutes";
 
     @Provides
     public AutoNexPluginConfig getConfig(ConfigManager configManager) {
@@ -72,11 +118,7 @@ public class AutoNexPlugin extends Plugin {
         @Override
         public void hotkeyPressed() {
             PaistiUtils.runOnExecutor(() -> {
-                if (runner.isRunning()) {
-                    stop();
-                } else {
-                    start();
-                }
+                configManager.setConfiguration("AutoNexPluginConfig", "shouldExecute", !config.shouldExecute());
                 return null;
             });
         }
@@ -84,6 +126,7 @@ public class AutoNexPlugin extends Plugin {
 
     public void start() {
         Utility.sendGameMessage("Started", "AutoNex");
+        setStopHasBeenRequested(false);
         initialize();
         runner.start();
     }
@@ -92,12 +135,13 @@ public class AutoNexPlugin extends Plugin {
     protected void startUp() throws Exception {
         var paistiUtilsPlugin = pluginManager.getPlugins().stream().filter(p -> p instanceof PaistiUtils).findFirst();
         if (paistiUtilsPlugin.isEmpty() || !pluginManager.isPluginEnabled(paistiUtilsPlugin.get())) {
-            log.info("PAutoGauntlet: PaistiUtils is required for this plugin to work");
+            log.info("AutoNex: PaistiUtils is required for this plugin to work");
             pluginManager.setPluginEnabled(this, false);
             return;
         }
         keyManager.registerKeyListener(startHotkeyListener);
         overlayManager.add(screenOverlay);
+        overlayManager.add(sceneOverlay);
 
         runner.setLoopAction(() -> {
             this.threadedLoop();
@@ -120,11 +164,16 @@ public class AutoNexPlugin extends Plugin {
         Utility.sleepGaussian(100, 200);
     }
 
+    public int getAncientKc() {
+        return Utility.getVarbitValue(13080);
+    }
+
     @Override
     protected void shutDown() throws Exception {
         stop();
         keyManager.unregisterKeyListener(startHotkeyListener);
         overlayManager.remove(screenOverlay);
+        overlayManager.remove(sceneOverlay);
     }
 
     private void initialize() {
@@ -134,11 +183,21 @@ public class AutoNexPlugin extends Plugin {
             }
         }
 
-        prepareState = new PrepareState(this);
+        // Statistics
+        setTotalKillCount(0);
+        setMvps(0);
+        setSeenUniqueItems(0);
+
+        updateOffensivePray();
+
+        killCountState = new KillCountState(this);
         fightNexState = new FightNexState(this);
+        restockState = new RestockState(this, config);
+
         states = List.of(
-                prepareState,
-                fightNexState
+                killCountState,
+                fightNexState,
+                restockState
         );
 
         for (var state : states) {
@@ -183,8 +242,37 @@ public class AutoNexPlugin extends Plugin {
         runner.onGameTick();
     }
 
-    public boolean playerInsideGodWars() {
-        return Widgets.isValidAndVisible(Widgets.getWidget(WidgetInfo.GWD_KC));
+    @Subscribe
+    private void onMenuEntryAdded(MenuEntryAdded event) {
+        if (event.getOption().contains("Inventory") && event.getType() == MenuAction.CC_OP.getId()) {
+            if (runner.isRunning()) {
+                Utility.addMenuEntry(event, ColorUtil.wrapWithColorTag("AutoNex", Color.cyan) + " Request stop", 0, (e) -> {
+                    Utility.sendGameMessage("Stop request has been received", "AutoNex");
+                    setStopHasBeenRequested(true);
+                });
+            }
+        }
+    }
+
+    @Subscribe
+    private void onChatMessage(ChatMessage event) {
+        if (event.getType() != ChatMessageType.GAMEMESSAGE) return;
+
+        if (event.getMessage().toLowerCase().contains(LOG_OUT_MESSAGE.toLowerCase())) {
+            setStopHasBeenRequested(true);
+            Utility.sendGameMessage("Log out message received, stopping on next restock", "AutoNex");
+        }
+    }
+    @Subscribe
+    private void onConfigChanged(ConfigChanged e) {
+        if (!e.getGroup().equalsIgnoreCase("AutoNexPluginConfig")) return;
+        if (e.getKey().equals("shouldExecute")) {
+            if (config.shouldExecute() && !runner.isRunning()) {
+                start();
+            } else if (!config.shouldExecute() && runner.isRunning()) {
+                stop();
+            }
+        }
     }
 
     public List<Widget> getFoodItems() {
@@ -192,6 +280,43 @@ public class AutoNexPlugin extends Plugin {
     }
 
     public boolean isInsideNexRoom() {
-        return Walking.getPlayerLocation().distanceTo(NEX_TILE) < 16;
+        var nexAltar = TileObjects.search().withId(NEX_ALTAR).nearestToPlayer();
+        return nexAltar.isPresent() && Utility.isInInstancedRegion();
+    }
+
+    public boolean isInsideBankRoom() {
+        var bank = NPCs.search().withName("Ashuelot Reis").withAction("Bank").first();
+        var reachabilityMap = LocalPathfinder.getReachabilityMap();
+        if (bank.isEmpty()) {
+            return false;
+        }
+        return reachabilityMap.isReachable(bank.get());
+    }
+
+    public boolean isInsideKcRoom() {
+        if (isInsideNexRoom() || isInsideBankRoom()) return false;
+        var npcs = NPCs.search().withName(config.selectedNpc().toString()).result();
+        if (npcs.isEmpty()) return false;
+        LocalPathfinder.ReachabilityMap reachabilityMap = LocalPathfinder.getReachabilityMap();
+        return npcs.stream().anyMatch(reachabilityMap::isReachable);
+    }
+
+
+    public Duration getRunTimeDuration() {
+        return Duration.between(runner.getStartedAt(), Instant.now());
+    }
+
+    public void updateOffensivePray() {
+        if (Utility.getRealSkillLevel(Skill.PRAYER) < 43) {
+            Utility.sendGameMessage("Must have 43 prayer to run the plugin", "AutoNex");
+            stop();
+        }
+        List<PPrayer> possiblePrayers = Arrays.asList(PPrayer.RIGOUR, PPrayer.EAGLE_EYE, PPrayer.HAWK_EYE);
+        Optional<PPrayer> bestPrayer = possiblePrayers.stream().filter(PPrayer::canUse).findFirst();
+        if (bestPrayer.isEmpty()) {
+            Utility.sendGameMessage("No offensive prayer available", "AutoNex");
+        } else {
+            offensivePray.set(bestPrayer.get());
+        }
     }
 }
