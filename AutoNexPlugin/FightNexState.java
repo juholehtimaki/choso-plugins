@@ -6,6 +6,7 @@ import com.theplug.PaistiUtils.API.Potions.BoostPotion;
 import com.theplug.PaistiUtils.API.Potions.PotionStatusEffect;
 import com.theplug.PaistiUtils.API.Potions.StatusPotion;
 import com.theplug.PaistiUtils.API.Prayer.PPrayer;
+import com.theplug.PaistiUtils.API.Spells.Necromancy;
 import com.theplug.PaistiUtils.Collections.query.NPCQuery;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import com.theplug.PaistiUtils.PathFinding.LocalPathfinder;
@@ -106,6 +107,9 @@ public class FightNexState implements State {
 
     public final AtomicReference<WorldPoint> simulatedPlayerLocationAfterAttack = new AtomicReference<>(null);
     public final AtomicReference<Boolean> canAttackSafelyThisTick = new AtomicReference<>(false);
+    private final AtomicReference<Boolean> deathChargeCasted = new AtomicReference<>(false);
+    private final AtomicReference<Integer> nextDeathChargeHp = new AtomicReference<>(200);
+    private final AtomicReference<Integer> nextThrallOnTick = new AtomicReference<>(-1);
 
     public FightNexState(AutoNexPlugin plugin) {
         super();
@@ -150,6 +154,10 @@ public class FightNexState implements State {
 
     public int generateNextStatimeAt() {
         return Utility.random(15, 25);
+    }
+
+    public int generateNextDeathChargeAt() {
+        return Utility.random(204, 310);
     }
 
     public boolean isNexPresentAndAttackable() {
@@ -201,6 +209,38 @@ public class FightNexState implements State {
         Walking.sceneWalk(desiredWaitTile);
         return Utility.sleepUntilCondition(() -> Walking.getPlayerLocation().distanceTo(desiredWaitTile) == 0, 3000, 200);
     }
+
+    private boolean handleDeathCharge() {
+        log.debug("handleDeathCharge");
+        if (!plugin.config.useDeathCharge()) return false;
+        if (deathChargeCasted.get()) return false;
+        var nex = getNex();
+        if (nex == null) return false;
+        int currBossHp = Utility.getVarbitValue(Varbits.BOSS_HEALTH_CURRENT);
+        if (currBossHp > nextDeathChargeHp.get() || currBossHp == 0) return false;
+        if (Necromancy.DEATH_CHARGE.tryCast("Cast")) {
+            deathChargeCasted.set(true);
+            nextDeathChargeHp.set(generateNextDeathChargeAt());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean handleThralls() {
+        log.debug("handleThralls");
+        var selectedThrall = plugin.config.selectedThrall().getThrall();
+        if (selectedThrall == null) return false;
+        var nex = getNex();
+        if (nex == null) return false;
+        if (Utility.getVarbitValue(Varbits.BOSS_HEALTH_CURRENT) == 0) return false;
+        if (Utility.getTickCount() < nextThrallOnTick.get()) return false;
+        if (selectedThrall.tryCast("Cast")) {
+            nextThrallOnTick.set(Utility.getTickCount() + Utility.random(94, 105));
+            return true;
+        }
+        return false;
+    }
+
 
     public NPC getDesiredMinion() {
         var fumus = NPCs.search().withName("Fumus").alive().first();
@@ -350,13 +390,13 @@ public class FightNexState implements State {
     }
 
     private boolean handleStatRestore() {
+        log.debug("handleStatRestore");
         if (plugin.config.useRemedy()) {
             var remedyVal = Utility.getVarbitValue(Varbits.MENAPHITE_REMEDY);
             if (remedyVal > 0) return false;
             var remedyPotions = Inventory.search().matchesWildCardNoCase("Menaphite remedy*").result();
             if (!remedyPotions.isEmpty()) return false;
         }
-        log.debug("handleStatRestore");
         if (Utility.getTickCount() - lastAteOnTick.get() < 3) return false;
         if (Utility.getBoostedSkillLevel(Skill.RANGED) < Utility.getRealSkillLevel(Skill.RANGED) - 10) {
             BoostPotion statRestorePotion = BoostPotion.SUPER_RESTORE;
@@ -485,7 +525,7 @@ public class FightNexState implements State {
         log.debug("handleAttacking");
         if (Utility.getTickCount() - nexDiedOnTick.get() < 20) return false;
 
-        if (getNexDistance() < 1 ) {
+        if (getNexDistance() < 1) {
             return false;
         }
 
@@ -599,6 +639,7 @@ public class FightNexState implements State {
     }
 
     public boolean handleRemedy() {
+        log.debug("handleRemedy");
         if (Utility.getTickCount() - lastAteOnTick.get() < 3) return false;
         if (!plugin.config.useRemedy()) return false;
         var remedyVal = Utility.getVarbitValue(Varbits.MENAPHITE_REMEDY);
@@ -911,8 +952,10 @@ public class FightNexState implements State {
             nexDiedOnTick.set(Utility.getTickCount());
             nextRandomWait.set(generateNextRandomWait());
             plugin.setTotalKillCount(plugin.getTotalKillCount() + 1);
+            plugin.setKillsThisTrip(plugin.getKillsThisTrip() + 1);
             isNexAlive.set(false);
             shouldAvoidNex.set(false);
+            deathChargeCasted.set(false);
             Utility.sendGameMessage("Nex has died!", "AutoNex");
         }
     }
@@ -972,10 +1015,11 @@ public class FightNexState implements State {
         if (isNexPresent()) return false;
         if (Utility.getTickCount() - nexDiedOnTick.get() < nextRandomWait.get()) return false;
 
+        var shouldLeaveDueToTeamSettings = plugin.config.leaveAfterKills() && plugin.getKillsThisTrip() >= plugin.config.leaveAfterKillsCount();
         var isSmartRestockEnabledAndLowOnSupplies = plugin.config.smartRestock() && lowOnSupplies();
         var isSmartRestockDisabledAndAbove40Kc = !plugin.config.smartRestock() && plugin.getAncientKc() >= 40;
 
-        if (isSmartRestockEnabledAndLowOnSupplies || isSmartRestockDisabledAndAbove40Kc) {
+        if (shouldLeaveDueToTeamSettings || isSmartRestockEnabledAndLowOnSupplies || isSmartRestockDisabledAndAbove40Kc) {
             var altar = TileObjects.search().withName("Altar").withAction("Teleport").nearestToPlayer();
             if (altar.isEmpty()) return false;
             Utility.sendGameMessage("Exiting Nex via altar", "AutoNex");
@@ -1064,6 +1108,14 @@ public class FightNexState implements State {
             return;
         }
         if (isNotInAssistMode && handleSpec()) {
+            Utility.sleepGaussian(50, 100);
+            return;
+        }
+        if (isNotInAssistMode && handleThralls()) {
+            Utility.sleepGaussian(50, 100);
+            return;
+        }
+        if (isNotInAssistMode && handleDeathCharge()) {
             Utility.sleepGaussian(50, 100);
             return;
         }

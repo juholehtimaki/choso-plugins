@@ -54,6 +54,7 @@ public class KillCountState implements State {
     }
 
     public boolean handleStatBoostPotions() {
+        log.debug("handleStatBoostPotions");
         if (Utility.getTickCount() - lastAteOnTick < 3) return false;
 
         // 105 <= 99 return false
@@ -99,6 +100,8 @@ public class KillCountState implements State {
     }
 
     public boolean handleEmergencyExit() {
+        log.debug("handleEmergencyExit");
+        if (plugin.getAncientKc() >= 40) return false;
         boolean isLowPrayer = Utility.getBoostedSkillLevel(Skill.PRAYER) < 20;
         if (isLowPrayer) {
             var restorePotions = Inventory.search().matchesWildCardNoCase("Super restore*");
@@ -138,6 +141,7 @@ public class KillCountState implements State {
     }
 
     public boolean eatFood() {
+        log.debug("eatFood");
         var foodItem = plugin.getFoodItems().stream().findFirst();
         var saradominBrew = plugin.fightNexState.findInInventoryWithLowestDose("saradomin brew*");
         if (foodItem.isPresent()) {
@@ -177,6 +181,7 @@ public class KillCountState implements State {
     }
 
     public boolean handlePrayers() {
+        log.debug("handlePrayers");
         var offensivePrayer = plugin.getOffensivePray().get();
         if (offensivePrayer == null) return false;
         if (currentlyInterActingWithNpc() && (!offensivePrayer.isActive() || !PPrayer.PROTECT_FROM_MAGIC.isActive())) {
@@ -192,6 +197,7 @@ public class KillCountState implements State {
     }
 
     public boolean handleAttack() {
+        log.debug("handleAttack");
         if (plugin.getAncientKc() >= 40) return false;
         var target = Utility.getInteractionTarget();
         var client = PaistiUtils.getClient();
@@ -225,6 +231,7 @@ public class KillCountState implements State {
     }
 
     public boolean handleEnterBankRoom() {
+        log.debug("handleEnterBankRoom");
         var ancientDoor = TileObjects.search().withId(ANCIENT_DOOR).withAction("Open").nearestToPlayer();
         if (ancientDoor.isEmpty()) {
             Utility.sendGameMessage("Could not find door!", "AutoNex");

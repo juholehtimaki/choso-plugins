@@ -74,6 +74,28 @@ public interface AutoNexPluginConfig extends Config {
         return 300;
     }
 
+    @ConfigItem(
+            keyName = "selectedThrall",
+            name = "Selected thrall",
+            description = "Thrall you wish to summon when fighting Nex",
+            position = 10,
+            section = fightSettings
+    )
+    default Thrall selectedThrall() {
+        return Thrall.NONE;
+    }
+
+    @ConfigItem(
+            keyName = "useDeathCharge",
+            name = "Use Death Charge",
+            description = "Use death charge when Nex is low HP",
+            position = 10,
+            section = fightSettings
+    )
+    default boolean useDeathCharge() {
+        return false;
+    }
+
     @ConfigSection(
             name = "Restock settings",
             description = "Restock settings",
@@ -207,17 +229,6 @@ public interface AutoNexPluginConfig extends Config {
     }
 
     @ConfigItem(
-            keyName = "onlyMassWorlds",
-            name = "Only mass worlds",
-            description = "Only allow plugin to enter Nex room in mass worlds (505 and 332)",
-            position = 20,
-            section = otherSettings
-    )
-    default boolean onlyMassWorlds() {
-        return true;
-    }
-
-    @ConfigItem(
             keyName = "lootOnlyMine",
             name = "Loot only mine",
             description = "Attempt to only loot own items. This is mainly for Iron mans. RuneLite API sucks so toggling this on may cause some loot to be left on the ground but uniques will be always looted",
@@ -249,5 +260,62 @@ public interface AutoNexPluginConfig extends Config {
     )
     default boolean shouldExecute() {
         return false;
+    }
+
+    @ConfigSection(
+            name = "Team settings",
+            description = "Team settings",
+            position = 50,
+            closedByDefault = true
+    )
+    String teamSettings = "teamSettings";
+
+    @ConfigItem(
+            keyName = "leaveAfterKills",
+            name = "Leave after X kills",
+            description = "Leave after specific amount of kills in order to keep the team synced",
+            position = 1,
+            section = teamSettings
+    )
+    default boolean leaveAfterKills() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "leaveAfterKillsCount",
+            name = "Kills before leaving",
+            description = "Number of kills before leaving Nex in order to keep the team synced",
+            position = 2,
+            section = teamSettings
+    )
+    @Range(
+            min = 1,
+            max = 100
+    )
+    default int leaveAfterKillsCount() {
+        return 8;
+    }
+
+    @ConfigItem(
+            keyName = "killSwitch",
+            name = "Kill switch",
+            description = "Kill switch",
+            position = 3,
+            section = teamSettings
+    )
+    default boolean killSwitch() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "killSwitchCommand",
+            name = "Kill Switch Command",
+            description = "Seeing the command in the chat triggers plugin to request stop",
+            position = 4,
+            section = teamSettings
+    )
+
+    default String killSwitchCommand() {
+        return "time to go home bois";
     }
 }

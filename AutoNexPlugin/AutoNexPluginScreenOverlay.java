@@ -28,7 +28,7 @@ public class AutoNexPluginScreenOverlay extends OverlayPanel {
         if (!plugin.isRunning()) return null;
 
         var currentState = plugin.states.stream().filter(State::shouldExecuteState).findFirst();
-        var formatedState = currentState.isPresent() ?currentState.get().name() : "NO STATE";
+        var formatedState = currentState.isPresent() ? currentState.get().name() : "NO STATE";
 
         var runtimeMs = plugin.getRunTimeDuration().toMillis();
         var killCount = plugin.getTotalKillCount();
@@ -62,7 +62,15 @@ public class AutoNexPluginScreenOverlay extends OverlayPanel {
                 .rightColor(Color.CYAN)
                 .build());
 
+        String killsThisTrip = Integer.toString(plugin.getKillsThisTrip());
 
+        panelComponent.getChildren().add(LineComponent.builder()
+                .left("Kills this trip:")
+                .leftColor(Color.CYAN)
+                .right(killsThisTrip)
+                .rightColor(Color.CYAN)
+                .build());
+        
         String seenUniques = Integer.toString(plugin.getSeenUniqueItems());
 
         panelComponent.getChildren().add(LineComponent.builder()

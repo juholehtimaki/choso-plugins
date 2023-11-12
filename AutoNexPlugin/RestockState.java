@@ -46,6 +46,7 @@ public class RestockState implements State {
     }
 
     public boolean handleMissingStats() {
+        log.debug("handleMissingStats");
         boolean isFullHp = Utility.getBoostedSkillLevel(Skill.HITPOINTS) >= Utility.getRealSkillLevel(Skill.HITPOINTS);
         boolean isFullPrayAndRange = Utility.getBoostedSkillLevel(Skill.PRAYER) >= Utility.getRealSkillLevel(Skill.PRAYER) && Utility.getBoostedSkillLevel(Skill.RANGED) >= Utility.getRealSkillLevel(Skill.RANGED);
 
@@ -104,6 +105,7 @@ public class RestockState implements State {
     }
 
     public boolean handleLoadout() {
+        log.debug("handleLoadout");
         if (loadout.isSatisfied()) return false;
         var successfullyWithdrew = loadout.handleWithdraw();
         if (!successfullyWithdrew) {
@@ -115,17 +117,7 @@ public class RestockState implements State {
     }
 
     public boolean handleEnterNex() {
-        WorldResult worldResult = worldService.getWorlds();
-        World currentWorld = worldResult.findWorld(Utility.getWorldId());
-
-        if (config.onlyMassWorlds()) {
-            if (currentWorld.getId() != 505 && currentWorld.getId() != 332) {
-                Utility.sendGameMessage("Must be in world 505 or 332", "AutoNex");
-                plugin.stop();
-                return false;
-            }
-        }
-
+        log.debug("handleEnterNex");
         var isLoadOutSatisfied = loadout.isSatisfied();
         boolean isFullHp = Utility.getBoostedSkillLevel(Skill.HITPOINTS) >= Utility.getRealSkillLevel(Skill.HITPOINTS);
         boolean isFullPrayAndRange = Utility.getBoostedSkillLevel(Skill.PRAYER) >= Utility.getRealSkillLevel(Skill.PRAYER) && Utility.getBoostedSkillLevel(Skill.RANGED) >= Utility.getRealSkillLevel(Skill.RANGED);
@@ -133,16 +125,20 @@ public class RestockState implements State {
         if (isLoadOutSatisfied && isFullHp && isFullPrayAndRange) {
             var nexDoor = TileObjects.search().withId(NEX_DOOR).withAction("Pass (normal)").nearestToPlayer();
             if (nexDoor.isEmpty()) return false;
+            plugin.setKillsThisTrip(0);
             return Interaction.clickTileObject(nexDoor.get(), "Pass (normal)");
         }
         return false;
     }
 
     public boolean handlePrayers() {
+        log.debug("handlePrayers");
         var offensivePrayer = plugin.getOffensivePray().get();
-        if (PPrayer.PROTECT_FROM_MAGIC.isActive() || offensivePrayer.isActive()) {
+        if (PPrayer.PROTECT_FROM_MAGIC.isActive() || PPrayer.PROTECT_FROM_MISSILES.isActive() || PPrayer.PROTECT_FROM_MELEE.isActive() || offensivePrayer.isActive()) {
             offensivePrayer.setEnabled(false);
             PPrayer.PROTECT_FROM_MAGIC.setEnabled(false);
+            PPrayer.PROTECT_FROM_MELEE.setEnabled(false);
+            PPrayer.PROTECT_FROM_MISSILES.setEnabled(false);
             return true;
         }
         return false;
@@ -174,6 +170,6 @@ public class RestockState implements State {
                 return;
             }
         }
-        Utility.sleepGaussian(50, 100);
+        Utility.sleepGaussian(200, 300);
     }
 }

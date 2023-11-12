@@ -89,6 +89,10 @@ public class AutoNexPlugin extends Plugin {
 
     @Getter
     @Setter
+    private int killsThisTrip = 0;
+
+    @Getter
+    @Setter
     private int seenUniqueItems = 0;
 
     @Getter
@@ -185,6 +189,7 @@ public class AutoNexPlugin extends Plugin {
 
         // Statistics
         setTotalKillCount(0);
+        setKillsThisTrip(0);
         setMvps(0);
         setSeenUniqueItems(0);
 
@@ -256,13 +261,19 @@ public class AutoNexPlugin extends Plugin {
 
     @Subscribe
     private void onChatMessage(ChatMessage event) {
-        if (event.getType() != ChatMessageType.GAMEMESSAGE) return;
+        //if (event.getType() != ChatMessageType.GAMEMESSAGE) return;
 
-        if (event.getMessage().toLowerCase().contains(LOG_OUT_MESSAGE.toLowerCase())) {
+        if (config.killSwitch() && event.getType() == ChatMessageType.PUBLICCHAT && event.getMessage().toLowerCase().contains(config.killSwitchCommand().toLowerCase())) {
+            setStopHasBeenRequested(true);
+            Utility.sendGameMessage("Kill switch command received, stopping when banking next time", "AutoNex");
+        }
+
+        if (event.getType() == ChatMessageType.GAMEMESSAGE && event.getMessage().toLowerCase().contains(LOG_OUT_MESSAGE.toLowerCase())) {
             setStopHasBeenRequested(true);
             Utility.sendGameMessage("Log out message received, stopping on next restock", "AutoNex");
         }
     }
+
     @Subscribe
     private void onConfigChanged(ConfigChanged e) {
         if (!e.getGroup().equalsIgnoreCase("AutoNexPluginConfig")) return;
