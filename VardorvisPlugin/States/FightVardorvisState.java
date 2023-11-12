@@ -5,6 +5,7 @@ import com.theplug.PaistiUtils.API.Loadouts.InventoryLoadout;
 import com.theplug.PaistiUtils.API.NPCTickSimulation.NPCTickSimulation;
 import com.theplug.PaistiUtils.API.Potions.BoostPotion;
 import com.theplug.PaistiUtils.API.Prayer.PPrayer;
+import com.theplug.PaistiUtils.API.Spells.Necromancy;
 import com.theplug.PaistiUtils.PathFinding.LocalPathfinder;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import com.theplug.VardorvisPlugin.VardorvisPlugin;
@@ -26,10 +27,14 @@ public class FightVardorvisState implements State {
     VardorvisPlugin plugin;
     VardorvisPluginConfig config;
     private static final int RANGE_PROJECTILE_ID = 2521;
+    private static final int MAGE_PROJECTILE_ID = 2520;
     private static final int VARDORVIS_NPC_ID = 12223;
     private static final int DANGEROUS_GROUND_GRAPHIC_ID = 2510;
     private static final int AXE_NPC_ID = 12227;
     private static final int TENDRIL_NPC_ID = 12225;
+    private static final int SKELETON_THRALL_ID = 10883;
+    private static final int ZOMBIE_THRALL_ID = 10886;
+    private static final int GHOST_THRALL_ID = 10880;
     private final Object dangerousTilesLock = new Object();
     public final Set<WorldPoint> dangerousTiles = new HashSet<>();
     private final Object predictedDangerousTilesLock = new Object();
@@ -38,7 +43,10 @@ public class FightVardorvisState implements State {
     public final AtomicReference<Boolean> canSafelyAttackThisTick = new AtomicReference<>(false);
     public final AtomicReference<WorldPoint> simulatedPlayerLocationAfterAttack = new AtomicReference<>(null);
     private static final AtomicReference<Integer> lastAteOnTick = new AtomicReference<>(-1);
+    private static final AtomicReference<Integer> lastDrankOnTick = new AtomicReference<>(-1);
     private static final AtomicReference<Integer> axesSpawnedOnTick = new AtomicReference<>(-1);
+    private static final AtomicReference<Integer> tendrilsSpawnedOnTick = new AtomicReference<>(-1);
+    private static final AtomicReference<Integer> vardorvisDiedOnTick = new AtomicReference<>(-1);
     private int nextPrayerPotionAt = -1;
     private int nextEatAtHp = -1;
     private final AtomicReference<PPrayer> defensivePrayer = new AtomicReference<>(null);
@@ -46,6 +54,14 @@ public class FightVardorvisState implements State {
     private InventoryLoadout.InventoryLoadoutSetup specWeaponLoadout = null;
     private ArrayList<Integer> equipmentIdsBeforeSwitch = null;
     private static long switchedToSpecGearAt = 0;
+    public final Set<WorldPoint> alwaysDangerousTiles = new HashSet<>();
+    private final Object alwaysDangerousTilesLock = new Object();
+    private final AtomicReference<WorldPoint> northTile = new AtomicReference<>(null);
+    private final AtomicReference<WorldPoint> northWestTile = new AtomicReference<>(null);
+    private final AtomicReference<WorldPoint> northEastTile = new AtomicReference<>(null);
+    private final AtomicReference<Boolean> deathChargeCasted = new AtomicReference<>(false);
+    private final AtomicReference<Integer> nextDeathChargeHp = new AtomicReference<>(200);
+    private final AtomicReference<Integer> castedThrallOnTick = new AtomicReference<>(-1);
 
     public enum NpcAngle {
         SOUTH,
@@ -69,13 +85,139 @@ public class FightVardorvisState implements State {
     }
 
     private void updateDefensivePrayer() {
-        var vardorvisHead = NPCs.search().withId(12226).first();
+        var vardorvisHead = NPCs.search().withName("Vardorvis' Head").first();
         if (vardorvisHead.isPresent()) {
-            defensivePrayer.set(PPrayer.PROTECT_FROM_MISSILES);
+            if (config.awakenedMode()) {
+                List<Projectile> projectilesList = new ArrayList<>();
+                var projectiles = PaistiUtils.getClient().getProjectiles();
+                for (var projectile : projectiles) {
+                    if (projectile.getRemainingCycles() > 1) projectilesList.add(projectile);
+                }
+                projectilesList.sort(Comparator.comparingInt(Projectile::getRemainingCycles));
+                if (projectilesList.isEmpty()) {
+                    defensivePrayer.set(PPrayer.PROTECT_FROM_MELEE);
+                } else {
+                    var firstProjectile = projectilesList.get(0);
+                    if (firstProjectile.getId() == RANGE_PROJECTILE_ID) {
+                        defensivePrayer.set(PPrayer.PROTECT_FROM_MISSILES);
+                    } else if (firstProjectile.getId() == MAGE_PROJECTILE_ID) {
+                        defensivePrayer.set(PPrayer.PROTECT_FROM_MAGIC);
+                    }
+                }
+            } else {
+                defensivePrayer.set(PPrayer.PROTECT_FROM_MISSILES);
+            }
         } else {
             defensivePrayer.set(PPrayer.PROTECT_FROM_MELEE);
         }
     }
+
+    private boolean awakenedAxesCanSpawnSoon() {
+        var edgeTendril = TileObjects.search().withId(47600).first();
+        if (edgeTendril.isEmpty()) return false;
+        var tendrils = NPCs.search().withId(TENDRIL_NPC_ID).result();
+        if (!tendrils.isEmpty()) return false;
+        var ticksSinceAxesSpawned = Utility.getTickCount() - axesSpawnedOnTick.get();
+        if (ticksSinceAxesSpawned <= 4) return false;
+        return true;
+    }
+
+    private void updateAwakenedDangerousTiles() {
+        synchronized (alwaysDangerousTilesLock) {
+            alwaysDangerousTiles.clear();
+            boolean shouldCareAboutAxeSpawn = awakenedAxesCanSpawnSoon();
+            if (!shouldCareAboutAxeSpawn) return;
+            var northWestObj = TileObjects.search().withId(48428).first();
+            if (northWestObj.isPresent()) {
+                var startingPoint = northWestObj.get().getWorldLocation().dx(-3);
+                for (var x = 0; x < 3; x++) {
+                    for (var y = -2; y <= 0; y++) {
+                        alwaysDangerousTiles.add(startingPoint.dx(x).dy(y));
+                    }
+                }
+            }
+            //NORTH
+            if (northWestObj.isPresent()) {
+                var startingPoint = northWestObj.get().getWorldLocation().dx(1);
+                for (var x = 0; x < 3; x++) {
+                    for (var y = -3; y <= 0; y++) {
+                        alwaysDangerousTiles.add(startingPoint.dx(x).dy(y));
+                    }
+                }
+            }
+            if (northWestObj.isPresent()) {
+                var startingPoint = northWestObj.get().getWorldLocation().dx(5);
+                for (var x = 0; x < 3; x++) {
+                    for (var y = -2; y <= 0; y++) {
+                        alwaysDangerousTiles.add(startingPoint.dx(x).dy(y));
+                    }
+                }
+            }
+            //WEST
+            if (northWestObj.isPresent()) {
+                var startingPoint = northWestObj.get().getWorldLocation().dx(-3).dy(-4);
+                for (var x = 0; x < 4; x++) {
+                    for (var y = -2; y <= 0; y++) {
+                        alwaysDangerousTiles.add(startingPoint.dx(x).dy(y));
+                    }
+                }
+            }
+            if (northWestObj.isPresent()) {
+                var startingPoint = northWestObj.get().getWorldLocation().dx(5).dy(-4);
+                for (var x = -1; x < 3; x++) {
+                    for (var y = -2; y <= 0; y++) {
+                        alwaysDangerousTiles.add(startingPoint.dx(x).dy(y));
+                    }
+                }
+            }
+            if (northWestObj.isPresent()) {
+                var startingPoint = northWestObj.get().getWorldLocation().dx(-3).dy(-8);
+                for (var x = 0; x < 3; x++) {
+                    for (var y = -2; y <= 0; y++) {
+                        alwaysDangerousTiles.add(startingPoint.dx(x).dy(y));
+                    }
+                }
+            }
+            if (northWestObj.isPresent()) {
+                var startingPoint = northWestObj.get().getWorldLocation().dx(1).dy(-8);
+                for (var x = 0; x < 3; x++) {
+                    for (var y = -2; y <= 1; y++) {
+                        alwaysDangerousTiles.add(startingPoint.dx(x).dy(y));
+                    }
+                }
+            }
+            if (northWestObj.isPresent()) {
+                var startingPoint = northWestObj.get().getWorldLocation().dx(5).dy(-8);
+                for (var x = 0; x < 3; x++) {
+                    for (var y = -2; y <= 0; y++) {
+                        alwaysDangerousTiles.add(startingPoint.dx(x).dy(y));
+                    }
+                }
+            }
+        }
+    }
+
+    private void updatePreferedTiles() {
+        var northWestObj = TileObjects.search().withId(48428).first();
+        northWestObj.ifPresent(tileObject -> northWestTile.set(tileObject.getWorldLocation().dy(-2)));
+        northWestObj.ifPresent(tileObject -> northTile.set(tileObject.getWorldLocation().dx(2)));
+        var northEastObj = TileObjects.search().withId(48424).first();
+        northEastObj.ifPresent(tileObject -> northEastTile.set(tileObject.getWorldLocation().dy(-2)));
+    }
+
+    private boolean handleSoulReaperAxeSpecial(Boolean force) {
+        log.debug("handleSoulReaperAxeSpecial");
+        boolean soulreaperAxeEquipped = Equipment.search().withName("Soulreaper axe").first().isPresent();
+        if (!soulreaperAxeEquipped) return false;
+        int currBossHp = Utility.getVarbitValue(Varbits.BOSS_HEALTH_CURRENT);
+        int currStacks = Utility.getVarpValue(3784);
+        if (!Utility.isSpecialAttackEnabled() && ((force && currStacks >= 1) || (currStacks >= 1 && currBossHp <= config.soulreaperAxeThreshold()))) {
+            Utility.sendGameMessage("Attempting to spec with Soulreaper axe", "AutoVardorvis");
+            return Utility.specialAttack();
+        }
+        return false;
+    }
+
 
     private void updateBloodBlobs() {
         Utility.runOnClientThread(() -> {
@@ -88,21 +230,27 @@ public class FightVardorvisState implements State {
     private boolean canPathSafelyToTile(WorldPoint destinationTile) {
         LocalPathfinder.ReachabilityMap reachabilityMap = LocalPathfinder.getReachabilityMap();
         var tiles = reachabilityMap.getPathTo(destinationTile);
-        for (var tile : tiles) {
-            if (dangerousTiles.contains(tile)) return false;
+        for (int i = 2; i < tiles.size() - 1; i += 2) {
+            if (dangerousTiles.contains(tiles.get(i))) return false;
         }
         return true;
     }
 
-    private WorldPoint getOptimalTileWithOnlyDangerousTiles(List<WorldPoint> tiles, WorldArea vardorvisWorldArea){
+    private WorldPoint getBestPossibleTileFromSafeTiles(List<WorldPoint> tiles, WorldArea vardorvisWorldArea) {
         LocalPathfinder.ReachabilityMap reachabilityMap = LocalPathfinder.getReachabilityMap();
         tiles.sort(Comparator.comparingInt(reachabilityMap::getCostTo));
         tiles.sort(Comparator.comparingInt(t -> {
-            if (predictedDangerousTiles.contains(t)) return 1;
-            return 0;
+            if (!predictedDangerousTiles.contains(t) && !vardorvisWorldArea.contains(t) && reachabilityMap.getCostTo(t) <= 2)
+                return 0;
+            if (!predictedDangerousTiles.contains(t) && reachabilityMap.getCostTo(t) <= 2) return 1;
+            if (reachabilityMap.getCostTo(t) <= 2) return 2;
+            return 3;
         }));
         var tilesWithSafePathing = tiles.stream().filter(this::canPathSafelyToTile).collect(Collectors.toList());
-        if (!tilesWithSafePathing.isEmpty()) return tilesWithSafePathing.get(0);
+        if (!tilesWithSafePathing.isEmpty()) {
+            return tilesWithSafePathing.get(0);
+        }
+        Utility.sendGameMessage("Could not find a tile with safe pathing", "AutoVardorvis");
         return tiles.get(0);
     }
 
@@ -134,19 +282,19 @@ public class FightVardorvisState implements State {
                 var tile = playerLoc.dx(dx).dy(dy);
                 if (dangerousTiles.contains(tile)) continue;
                 if (!reachabilityMap.isReachable(tile)) continue;
-                if (vardorvisWorldArea.contains(tile)) continue;
                 tiles.add(tile);
             }
         }
 
         if (tiles.isEmpty()) {
+            Utility.sendGameMessage("No tiles available", "AutoVardorvis");
             optimalTile.set(null);
             return;
         }
 
-        var tileWithDangerous = getOptimalTileWithOnlyDangerousTiles(tiles, vardorvisWorldArea);
+        var opTile = getBestPossibleTileFromSafeTiles(tiles, vardorvisWorldArea);
 
-        optimalTile.set(tileWithDangerous);
+        optimalTile.set(opTile);
     }
 
     private NpcAngle getNpcAngle(int value) {
@@ -185,6 +333,7 @@ public class FightVardorvisState implements State {
     private void updateDangerousTiles() {
         synchronized (dangerousTilesLock) {
             dangerousTiles.clear();
+            if (config.awakenedMode()) dangerousTiles.addAll(alwaysDangerousTiles);
             var graphicsObjects = PaistiUtils.getClient().getGraphicsObjects();
             for (var graphicObj : graphicsObjects) {
                 if (graphicObj.getId() == DANGEROUS_GROUND_GRAPHIC_ID) {
@@ -205,7 +354,7 @@ public class FightVardorvisState implements State {
                             dangerousTiles.add(tile.dy(-xy));
                         }
                     }
-                }  else if (angle == NpcAngle.SOUTHWEST) {
+                } else if (angle == NpcAngle.SOUTHWEST) {
                     for (var tile : axeWorldArea.toWorldPointList()) {
                         for (var xy = TENDRIL_START_ITERATOR; xy <= TENDRIL_END_ITERATOR; xy++) {
                             dangerousTiles.add(tile.dx(-xy).dy(-xy));
@@ -250,6 +399,8 @@ public class FightVardorvisState implements State {
                 }
             }
             var tick = Utility.getTickCount() - axesSpawnedOnTick.get();
+            boolean shouldNotPredictNextTick = tick >= 5;
+            if (shouldNotPredictNextTick) return;
             var lastHurl = tick == 4;
             var AXE_START_ITERATOR = lastHurl ? 1 : 2;
             var AXE_END_ITERATOR = lastHurl ? 1 : 2;
@@ -264,7 +415,7 @@ public class FightVardorvisState implements State {
                             dangerousTiles.add(tile.dy(-xy));
                         }
                     }
-                }  else if (angle == NpcAngle.SOUTHWEST) {
+                } else if (angle == NpcAngle.SOUTHWEST) {
                     for (var tile : axeWorldArea.toWorldPointList()) {
                         for (var xy = AXE_START_ITERATOR; xy <= AXE_END_ITERATOR; xy++) {
                             dangerousTiles.add(tile.dx(-xy).dy(-xy));
@@ -327,7 +478,7 @@ public class FightVardorvisState implements State {
                             predictedDangerousTiles.add(tile.dy(-xy));
                         }
                     }
-                }  else if (angle == NpcAngle.SOUTHWEST) {
+                } else if (angle == NpcAngle.SOUTHWEST) {
                     for (var tile : axeWorldArea.toWorldPointList()) {
                         for (var xy = AXE_START_ITERATOR; xy <= AXE_END_ITERATOR; xy++) {
                             predictedDangerousTiles.add(tile.dx(-xy).dy(-xy));
@@ -366,7 +517,7 @@ public class FightVardorvisState implements State {
                 } else if (angle == NpcAngle.SOUTHEAST) {
                     for (var tile : axeWorldArea.toWorldPointList()) {
                         for (var xy = AXE_START_ITERATOR; xy <= AXE_END_ITERATOR; xy++) {
-                            dangerousTiles.add(tile.dx(xy).dy(-xy));
+                            predictedDangerousTiles.add(tile.dx(xy).dy(-xy));
                         }
                     }
                 }
@@ -374,8 +525,23 @@ public class FightVardorvisState implements State {
         }
     }
 
+    public boolean canDrinkThisTick() {
+        int currTick = Utility.getTickCount();
+        if (currTick - lastDrankOnTick.get() < 3) return false;
+        if (currTick - lastAteOnTick.get() < 3 && lastAteOnTick.get() != 0) return false;
+        return true;
+    }
+
+    public boolean canEatThisTick() {
+        int currTick = Utility.getTickCount();
+        if (currTick - lastAteOnTick.get() < 3) return false;
+        if (currTick - lastDrankOnTick.get() < 3) return false;
+        return true;
+    }
+
     public boolean handleStatBoostPotions() {
-        if (Utility.getTickCount() - lastAteOnTick.get() < 3) return false;
+        log.debug("handleStatBoostPotions");
+        if (!canDrinkThisTick()) return false;
         var potionsToDrink = Utility.runOnClientThread(() -> Arrays.stream(BoostPotion.values()).filter(potion -> {
             if (potion.findBoost(Skill.PRAYER) != null) return false;
             if (potion.findInInventory().isEmpty()) return false;
@@ -393,7 +559,7 @@ public class FightVardorvisState implements State {
         for (var boostPotion : potionsToDrink) {
             if (boostPotion.drink()) {
                 Utility.sendGameMessage("Drank " + boostPotion.name(), "AutoVardorvis");
-                lastAteOnTick.set(Utility.getTickCount());
+                lastDrankOnTick.set(Utility.getTickCount());
             }
             return true;
         }
@@ -402,7 +568,9 @@ public class FightVardorvisState implements State {
 
     private boolean shouldSpec() {
         if (!config.useSpecialAttack()) return false;
-        if (!(Varbits.BOSS_HEALTH_CURRENT >= config.specHpMinimum() || Varbits.BOSS_HEALTH_CURRENT <= config.specHpMaximum())) return false;
+        int currBossHp = Utility.getVarbitValue(Varbits.BOSS_HEALTH_CURRENT);
+        boolean isInHpThresholdRange = currBossHp >= config.specHpMinimum() && currBossHp <= config.specHpMaximum();
+        if (!isInHpThresholdRange) return false;
         var specEnergy = Utility.getSpecialAttackEnergy();
         if (specEnergy < config.specEnergyMinimum()) {
             return false;
@@ -415,6 +583,7 @@ public class FightVardorvisState implements State {
     }
 
     public boolean handleSpecialAttacking() {
+        log.debug("handleSpecialAttacking");
         if (!config.useSpecialAttack()) return false;
         var vardorvis = getVardorvis();
         if (vardorvis == null || vardorvis.isDead()) return false;
@@ -428,6 +597,10 @@ public class FightVardorvisState implements State {
             equipmentIdsBeforeSwitch = null;
         }
         if (!shouldSpec()) return false;
+
+        if (handleSoulReaperAxeSpecial(true)) {
+            return false;
+        }
 
         var equipment = Equipment.search().result();
         if (config.twoHandedSpecWeapon() && equipment.stream().anyMatch(i -> i.getEquipmentSlot() == EquipmentInventorySlot.SHIELD)) {
@@ -454,6 +627,7 @@ public class FightVardorvisState implements State {
     }
 
     public boolean shouldRestock(boolean printMessages) {
+        if (Utility.getTickCount() - vardorvisDiedOnTick.get() < 3) return false;
         var vardorvis = getVardorvis();
         if (vardorvis != null) return false;
 
@@ -490,6 +664,7 @@ public class FightVardorvisState implements State {
     }
 
     public boolean handleRegularLooting() {
+        log.debug("handleRegularLooting");
         var vardorvis = getVardorvis();
         if (vardorvis != null && !vardorvis.isDead()) return false;
         var groundItems = TileItems.search().result();
@@ -517,6 +692,7 @@ public class FightVardorvisState implements State {
     }
 
     private boolean handleMoving() {
+        log.debug("handleMoving");
         var vardorvis = getVardorvis();
         if (vardorvis == null || vardorvis.isDead()) return false;
         var opTile = optimalTile.get();
@@ -524,10 +700,11 @@ public class FightVardorvisState implements State {
         var playerLoc = Walking.getPlayerLocation();
         if (playerLoc.equals(opTile)) return false;
         Walking.sceneWalk(opTile);
-        return Utility.sleepUntilCondition(() -> !Walking.getPlayerLocation().equals(playerLoc), 600, 50);
+        return Utility.sleepUntilCondition(() -> Walking.getPlayerLocation().equals(opTile), 600, 50);
     }
 
     private boolean handleBloodBlobs() {
+        log.debug("handleBloodBlobs");
         var blobs = bloodBlobs.get();
         if (blobs == null || blobs.isEmpty()) return false;
         for (var blob : blobs) {
@@ -538,7 +715,8 @@ public class FightVardorvisState implements State {
     }
 
     private boolean handlePrayerRestore() {
-        if (Utility.getTickCount() - lastAteOnTick.get() < 3) return false;
+        log.debug("handlePrayerRestore");
+        if (!canDrinkThisTick()) return false;
         if (Utility.getBoostedSkillLevel(Skill.PRAYER) <= nextPrayerPotionAt) {
             BoostPotion prayerBoostPot = BoostPotion.PRAYER_POTION.findInInventoryWithLowestDose().isEmpty() ? BoostPotion.SUPER_RESTORE : BoostPotion.PRAYER_POTION;
             var potionInInventory = prayerBoostPot.findInInventoryWithLowestDose();
@@ -546,10 +724,42 @@ public class FightVardorvisState implements State {
                 var clicked = Interaction.clickWidget(potionInInventory.get(), "Drink");
                 if (clicked) {
                     nextPrayerPotionAt = generateNextPrayerPotAt();
-                    lastAteOnTick.set(Utility.getTickCount());
+                    lastDrankOnTick.set(Utility.getTickCount());
                 }
                 return clicked;
             }
+        }
+        return false;
+    }
+
+    private boolean handleThralls() {
+        log.debug("handleThralls");
+        var selectedThrall = config.selectedThrall().getThrall();
+        if (selectedThrall == null) return false;
+        var vardorvis = getVardorvis();
+        if (vardorvis == null) return false;
+        if (Utility.getTickCount() - castedThrallOnTick.get() <= 10) return false;
+        var thrall = NPCs.search().withIdInArr(SKELETON_THRALL_ID, ZOMBIE_THRALL_ID, GHOST_THRALL_ID).first();
+        if (thrall.isPresent()) return false;
+        if (selectedThrall.tryCast("Cast")) {
+            castedThrallOnTick.set(Utility.getTickCount());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean handleDeathCharge() {
+        log.debug("handleDeathCharge");
+        if (!plugin.config.useDeathCharge()) return false;
+        if (deathChargeCasted.get()) return false;
+        var vardorvis = getVardorvis();
+        if (vardorvis == null) return false;
+        int currBossHp = Utility.getVarbitValue(Varbits.BOSS_HEALTH_CURRENT);
+        if (currBossHp > nextDeathChargeHp.get() || currBossHp == 0) return false;
+        if (Necromancy.DEATH_CHARGE.tryCast("Cast")) {
+            deathChargeCasted.set(true);
+            nextDeathChargeHp.set(generateNextDeathChargeAt());
+            return true;
         }
         return false;
     }
@@ -559,13 +769,14 @@ public class FightVardorvisState implements State {
     }
 
     public boolean eatFood() {
+        log.debug("eatFood");
         var foodItem = getFoodItems().stream().findFirst();
         return foodItem.filter(widget -> Interaction.clickWidget(widget, "Eat", "Drink")).isPresent();
     }
 
     private boolean handleEating() {
         log.debug("handleEating");
-        if (Utility.getTickCount() - lastAteOnTick.get() < 3) return false;
+        if (!canEatThisTick()) return false;
         var isBelowHpTreshold = Utility.getBoostedSkillLevel(Skill.HITPOINTS) <= nextEatAtHp;
         if (isBelowHpTreshold) {
             if (eatFood()) {
@@ -577,26 +788,7 @@ public class FightVardorvisState implements State {
         return false;
     }
 
-    public boolean teleportToRestock(boolean emergencyTp) {
-        if (emergencyTp) {
-            for (int attempt = 1; attempt <= 3; attempt++) {
-                var locationBeforeTp = Walking.getPlayerLocation();
-                var teleport = Inventory.search().withName("Teleport to house").first();
-                if (teleport.isEmpty()) {
-                    Utility.sendGameMessage("Stopping because no teleport found", "AutoVardorvis");
-                    plugin.stop();
-                    return false;
-                }
-                if (Interaction.clickWidget(teleport.get(), "Break") &&
-                        Utility.sleepUntilCondition(() -> Walking.getPlayerLocation().distanceTo(locationBeforeTp) > 15, 3600, 600)) {
-                    Utility.sleepGaussian(600, 1200);
-                    Utility.sleepUntilCondition(() -> Utility.getGameState() != GameState.LOADING);
-                    break;
-                }
-                Utility.sleepGaussian(500, 1000);
-            }
-        }
-
+    public boolean teleportToRestock() {
         for (int attempt = 1; attempt <= 3; attempt++) {
             var locationBeforeTp = Walking.getPlayerLocation();
             var teleport = Inventory.search().withName("Teleport to house").first();
@@ -608,16 +800,16 @@ public class FightVardorvisState implements State {
             if (Interaction.clickWidget(teleport.get(), "Break") &&
                     Utility.sleepUntilCondition(() -> Walking.getPlayerLocation().distanceTo(locationBeforeTp) > 15, 3600, 600)) {
                 Utility.sleepGaussian(600, 1200);
-                Utility.sleepUntilCondition(() -> Utility.getGameState() != GameState.LOADING);
+                Utility.sleepUntilCondition(House::isPlayerInsideHouse);
                 break;
             }
-            Utility.sleepGaussian(500, 1000);
+            Utility.sleepGaussian(1000, 2000);
         }
-
         return true;
     }
 
     public boolean handleAttacking() {
+        log.debug("handleAttacking");
         var vardorvis = getVardorvis();
         if (vardorvis == null) return false;
         if (vardorvis.isDead()) return false;
@@ -634,7 +826,8 @@ public class FightVardorvisState implements State {
         return true;
     }
 
-    private boolean handlePrayers(){
+    private boolean handlePrayers() {
+        log.debug("handlePrayers");
         var vardorvis = getVardorvis();
         if (vardorvis == null) {
             if (PPrayer.PROTECT_FROM_MELEE.isActive() || PPrayer.PROTECT_FROM_MISSILES.isActive() || PPrayer.PIETY.isActive()) {
@@ -662,13 +855,14 @@ public class FightVardorvisState implements State {
     }
 
     public boolean handleAbortFight() {
+        log.debug("handleAbortFight");
         if (Utility.getVarbitValue(Varbits.BOSS_HEALTH_CURRENT) <= 0) return false;
         var currentHp = Utility.getBoostedSkillLevel(Skill.HITPOINTS);
         var totalFoodHealing = getFoodItems().stream().mapToInt(item -> plugin.foodStats.getHealAmount(item.getItemId())).sum();
         var totalHitpoints = currentHp + totalFoodHealing;
-        if (totalHitpoints <= 40) {
+        if (totalHitpoints <= 20) {
             Utility.sendGameMessage("Trying to emergency teleport, not enough food to continue", "AutoVardorvis");
-            teleportToRestock(true);
+            teleportToRestock();
             return true;
         }
 
@@ -687,6 +881,7 @@ public class FightVardorvisState implements State {
 
     @Override
     public void threadedOnGameTick() {
+        handlePrayers();
     }
 
     @Override
@@ -696,10 +891,6 @@ public class FightVardorvisState implements State {
             return;
         }
         if (handleMoving()) {
-            Utility.sleepGaussian(50, 100);
-            return;
-        }
-        if (handlePrayers()) {
             Utility.sleepGaussian(50, 100);
             return;
         }
@@ -723,7 +914,19 @@ public class FightVardorvisState implements State {
             Utility.sleepGaussian(50, 100);
             return;
         }
-        if (handleAttacking()){
+        if (handleSoulReaperAxeSpecial(false)) {
+            Utility.sleepGaussian(50, 100);
+            return;
+        }
+        if (handleThralls()) {
+            Utility.sleepGaussian(50, 100);
+            return;
+        }
+        if (handleDeathCharge()) {
+            Utility.sleepGaussian(50, 100);
+            return;
+        }
+        if (handleAttacking()) {
             Utility.sleepGaussian(50, 100);
             return;
         }
@@ -733,9 +936,9 @@ public class FightVardorvisState implements State {
         }
         if (shouldRestock(true)) {
             handleRegularLooting();
-            if (!teleportToRestock(false)) {
+            if (!teleportToRestock()) {
                 Utility.sleepGaussian(2000, 3000);
-                if (!teleportToRestock(false)) {
+                if (!teleportToRestock()) {
                     Utility.sendGameMessage("Failed to teleport to restock", "AutoVardorvis");
                     plugin.stop();
                 }
@@ -748,6 +951,7 @@ public class FightVardorvisState implements State {
     @Subscribe
     private void onGameTick(GameTick e) {
         updateDefensivePrayer();
+        if (config.awakenedMode()) updateAwakenedDangerousTiles();
         updateDangerousTiles();
         updatePredictedDangerousTiles();
         updateBloodBlobs();
@@ -759,8 +963,12 @@ public class FightVardorvisState implements State {
         return Utility.random(30, 40);
     }
 
+    public int generateNextDeathChargeAt() {
+        return Utility.random(76, 204);
+    }
+
     public int generateNextEatAtHp() {
-        return Utility.getRealSkillLevel(Skill.HITPOINTS) - Utility.random(25, 35);
+        return config.awakenedMode() ? Utility.getRealSkillLevel(Skill.HITPOINTS) - Utility.random(25, 35) : Utility.getRealSkillLevel(Skill.HITPOINTS) - Utility.random(45, 55);
     }
 
     @Subscribe(priority = 5000)
@@ -772,14 +980,34 @@ public class FightVardorvisState implements State {
                 if (actor.getName().toLowerCase().contains("vardorvis")) {
                     Utility.sendGameMessage("Vardorvis has died!", "AutoVardorvis");
                     plugin.setTotalKillCount(plugin.getTotalKillCount() + 1);
+                    vardorvisDiedOnTick.set(Utility.getTickCount());
+                    deathChargeCasted.set(false);
                 }
             }
         }
     }
+
     @Subscribe
     public void onNpcSpawned(NpcSpawned spawnedNpc) {
-        if(spawnedNpc.getNpc().getId() == AXE_NPC_ID) {
+        if (spawnedNpc.getNpc().getId() == AXE_NPC_ID) {
             axesSpawnedOnTick.set(Utility.getTickCount());
+            //Utility.sendGameMessage("Axe spawned on tick: " + Utility.getTickCount(), "AutoVardorvis");
+        }
+        if (spawnedNpc.getNpc().getId() == TENDRIL_NPC_ID) {
+            //Utility.sendGameMessage("Npc spawned on tick: " + Utility.getTickCount(), "AutoVardorvis");
+            tendrilsSpawnedOnTick.set(Utility.getTickCount());
+        }
+    }
+
+    @Subscribe
+    public void onNpcDespawned(NpcDespawned despawnedNpc) {
+        if (despawnedNpc.getNpc().getId() == AXE_NPC_ID) {
+            //Utility.sendGameMessage("Axe despawned on tick: " + Utility.getTickCount(), "AutoVardorvis");
+            //axesSpawnedOnTick.set(Utility.getTickCount());
+        }
+        if (despawnedNpc.getNpc().getId() == TENDRIL_NPC_ID) {
+            //Utility.sendGameMessage("Tendril despawned on tick: " + Utility.getTickCount(), "AutoVardorvis");
+            //tendrilsSpawnedOnTick.set(Utility.getTickCount());
         }
     }
 }

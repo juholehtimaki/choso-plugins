@@ -41,6 +41,7 @@ public class RestockState implements State {
     }
 
     private static boolean handleRejuvenationPoolPoh() {
+        log.debug("handleRejuvenationPoolPoh");
         var poolOfRefreshment = TileObjects.search().withName("Ornate pool of Rejuvenation").withAction("Drink").nearestToPlayer();
         if (poolOfRefreshment.isEmpty()) {
             Utility.sleepGaussian(1200, 1600);
@@ -66,9 +67,8 @@ public class RestockState implements State {
     }
 
     public boolean handleRestoreWithPool() {
-        if (!House.isPlayerInsideHouse()) {
-            if (!loadout.isSatisfied()) return false;
-        }
+        log.debug("handleRestoreWithPool");
+        if (!House.isPlayerInsideHouse()) return false;
         var missingHp = Utility.getRealSkillLevel(Skill.HITPOINTS) - Utility.getBoostedSkillLevel(Skill.HITPOINTS);
         var missingPrayer = Utility.getRealSkillLevel(Skill.PRAYER) - Utility.getBoostedSkillLevel(Skill.PRAYER);
         if (missingPrayer <= 0 && missingHp <= 0) {
@@ -84,17 +84,34 @@ public class RestockState implements State {
     }
 
     public boolean handleGenericBanking() {
+        log.debug("handleGenericBanking");
         if (loadout.isSatisfied()) return false;
 
-        if (!Bank.isNearBank()) {
+        boolean successfullyTraveledToBank = false;
+        int attempts = 3;
+        for (int i = 0; i < attempts; i++) {
+            if (Bank.isNearBank()) {
+                successfullyTraveledToBank = true;
+                break; // Exit the loop if we are already near a bank
+            }
+
             WebWalker.walkToNearestBank();
             Utility.sleepUntilCondition(Bank::isNearBank);
+
+            if (Bank.isNearBank()) {
+                successfullyTraveledToBank = true;
+                break; // Exit the loop if we reached the bank
+            }
+        }
+        if (!successfullyTraveledToBank) {
+            Utility.sendGameMessage("Failed to travel to bank", "AutoVardorvis");
+            plugin.stop();
+            return false;
         }
         Bank.openBank();
         Utility.sleepUntilCondition(Bank::isOpen);
-        int attempts = 3;
         boolean successfullyWithdrawn = false;
-        for (int i = 0; i < attempts    ; i++) {
+        for (int i = 0; i < attempts; i++) {
             if (loadout.handleWithdraw()) {
                 successfullyWithdrawn = true;
                 break;
@@ -110,22 +127,25 @@ public class RestockState implements State {
     }
 
     public boolean handleBanking() {
+        log.debug("handleBanking");
         if (loadout.isSatisfied()) return false;
 
         if (config.bankingMethod() == BankingMethod.HOUSE) {
             return handleGenericBanking();
         }
-        return true;
+        return false;
     }
 
 
     public boolean handleToggleRun() {
+        log.debug("handleToggleRun");
         if (Walking.isRunEnabled()) return false;
         Walking.setRun(true);
         return true;
     }
 
     public boolean handleDisablePrayers() {
+        log.debug("handleDisablePrayers");
         boolean disabledPrayer = false;
         for (var prayer : PPrayer.values()) {
             if (prayer.isActive()) {
@@ -138,6 +158,7 @@ public class RestockState implements State {
     }
 
     public boolean handleTravel() {
+        log.debug("handleTravel");
         var rocks = TileObjects.search().withId(VARDORVIS_ENTRANCE_ROCKS).nearestToPlayer();
         if (rocks.isEmpty() && !WebWalker.walkTo(VardorvisPlugin.NEAR_VARDORVIS_ENTRANCE.dx(Utility.random(-1, 1)).dy(Utility.random(-1, 1)))) {
             Utility.sendGameMessage("Failed to webwalk to Vardorvis", "AutoVardorvis");
@@ -156,6 +177,7 @@ public class RestockState implements State {
 
 
     public boolean handleWalkToVardorvis() {
+        log.debug("handleWalkToVardorvis");
         if (!loadout.isSatisfied()) return false;
 
         if (config.bankingMethod() == BankingMethod.HOUSE) {
@@ -197,5 +219,6 @@ public class RestockState implements State {
             Utility.sleepGaussian(200, 400);
             return;
         }
+        Utility.sleepGaussian(200, 400);
     }
 }

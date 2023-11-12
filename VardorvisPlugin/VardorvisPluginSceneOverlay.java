@@ -2,13 +2,10 @@ package com.theplug.VardorvisPlugin;
 
 
 import com.theplug.PaistiUtils.API.NPCs;
-import com.theplug.PaistiUtils.API.Utility;
-import com.theplug.PaistiUtils.API.Walking;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import com.google.common.base.Strings;
 import com.google.inject.Inject;
 import net.runelite.api.Client;
-import net.runelite.api.NPC;
 import net.runelite.api.Perspective;
 import net.runelite.api.Point;
 import net.runelite.api.coords.LocalPoint;
@@ -39,26 +36,33 @@ public class VardorvisPluginSceneOverlay extends Overlay {
     @Override
     public Dimension render(Graphics2D graphics) {
         if (!plugin.isRunning()) return null;
-        /*
-        var dangerousTiles = plugin.fightVardorvisState.dangerousTiles;
-        for (var tile : dangerousTiles) {
-            drawTile(graphics, tile, Color.RED, 50, "D", new BasicStroke(1));
+
+        if (config.drawDangerousTiles()) {
+            var dangerousTiles = plugin.fightVardorvisState.dangerousTiles;
+            for (var tile : dangerousTiles) {
+                drawTile(graphics, tile, Color.RED, 50, "", new BasicStroke(0));
+            }
         }
-         */
-        //var opTile = plugin.fightVardorvisState.optimalTile.get();
 
-        //if (opTile != null) drawTile(graphics, opTile, Color.GREEN, 50, "", new BasicStroke(1));
-
-        var axes = NPCs.search().withId(12227).result();
-        var client = PaistiUtils.getClient();
-        for (var axe : axes) {
-            renderArea(graphics, client, axe.getWorldArea(), Color.CYAN, 50, "");
+        if (config.drawAxes()) {
+            var axes = NPCs.search().withId(12227).result();
+            var client = PaistiUtils.getClient();
+            for (var axe : axes) {
+                renderArea(graphics, client, axe.getWorldArea(), Color.RED, 50, "");
+            }
         }
-        var vardorvis = plugin.fightVardorvisState.getVardorvis();
-        if (vardorvis != null) renderArea(graphics, client, vardorvis.getWorldArea(), Color.YELLOW, 50, "V");
 
-        var predictedtile = plugin.fightVardorvisState.simulatedPlayerLocationAfterAttack.get();
-        if (predictedtile != null) drawTile(graphics, predictedtile, Color.RED, 50, "P", new BasicStroke(1));
+        if (config.drawTendrils()) {
+            var tendrils = NPCs.search().withId(12225).result();
+            for (var tendril : tendrils) {
+                renderArea(graphics, client, tendril.getWorldArea(), Color.RED, 50, "");
+            }
+        }
+
+        if (config.drawVardorvis()) {
+            var vardorvis = plugin.fightVardorvisState.getVardorvis();
+            if (vardorvis != null) renderArea(graphics, client, vardorvis.getWorldArea(), Color.YELLOW, 50, "");
+        }
 
         return null;
     }

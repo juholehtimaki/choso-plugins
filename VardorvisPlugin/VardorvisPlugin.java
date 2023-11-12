@@ -2,7 +2,6 @@ package com.theplug.VardorvisPlugin;
 
 import com.theplug.PaistiUtils.API.*;
 import com.theplug.PaistiUtils.API.AttackTickTracker.AttackTickTracker;
-import com.theplug.PaistiUtils.API.Loadouts.InventoryLoadout;
 import com.theplug.PaistiUtils.Framework.ThreadedScriptRunner;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import com.google.inject.Inject;
@@ -33,7 +32,7 @@ import java.util.List;
 
 
 @Slf4j
-@PluginDescriptor(name = "AutoVardorvis", description = "Automates Vardorvis", enabledByDefault = false, tags = {"paisti", "muspah"})
+@PluginDescriptor(name = "AutoVardorvis", description = "Automates Vardorvis", enabledByDefault = false, tags = {"paisti", "choso", "vardorvis"})
 public class VardorvisPlugin extends Plugin {
     @Inject
     public VardorvisPluginConfig config;

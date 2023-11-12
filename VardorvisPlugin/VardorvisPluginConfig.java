@@ -38,7 +38,7 @@ public interface VardorvisPluginConfig extends Config {
             keyName = "bankUnderHpAmount",
             name = "Bank if total hp <",
             description = "After kills, bank if hp + potential hp from food in inventory is less than this amount." +
-                    " Set this to a hitpoint amount you feel you need to kill Vorkath",
+                    " Set this to a hitpoint amount you feel you need to kill Vardorvis",
             position = 5,
             section = bankingSettings
     )
@@ -54,7 +54,7 @@ public interface VardorvisPluginConfig extends Config {
             keyName = "bankUnderPrayerAmount",
             name = "Bank if prayer <",
             description = "After kills, bank if total prayer points including inventory potions is less than this amount." +
-                    " Set this to a prayer point amount you feel you need to kill Vorkath",
+                    " Set this to a prayer point amount you feel you need to kill Vardorvis",
             position = 10,
             section = bankingSettings
     )
@@ -70,7 +70,7 @@ public interface VardorvisPluginConfig extends Config {
             keyName = "bankUnderBoostDoseAmount",
             name = "Bank if boost doses <",
             description = "After kills, bank if boosts (Super combat potion, Bastion potion etc.) doses is below this amount." +
-                    " Set this to a boost potion dose amount you feel you need to kill Vorkath",
+                    " Set this to a boost potion dose amount you feel you need to kill Vardorvis",
             position = 25,
             section = bankingSettings
     )
@@ -105,12 +105,49 @@ public interface VardorvisPluginConfig extends Config {
     default int drinkPotionsBelowBoost() {
         return 9;
     }
+    @ConfigItem(
+            keyName = "selectedThrall",
+            name = "Selected thrall",
+            description = "Thrall you wish to summon when fighting Vardorvis",
+            position = 10,
+            section = fightSettings
+    )
+    default Thrall selectedThrall() {
+        return Thrall.NONE;
+    }
+
+    @ConfigItem(
+            keyName = "useDeathCharge",
+            name = "Use Death Charge",
+            description = "Use death charge when Vardorvis is low HP",
+            position = 10,
+            section = fightSettings
+    )
+    default boolean useDeathCharge() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "soulreaperAxeThreshold",
+            name = "Soulreaper axe HP",
+            description = "Soulreaper axe special will be used when Vardorvis is below this HP",
+            position = 10,
+            section = fightSettings
+    )
+    @Range(
+            min = 0,
+            max = 1400
+    )
+    default int soulreaperAxeThreshold() {
+        return 50;
+    }
+
 
     @ConfigSection(
             name = "Special attack settings",
             description = "Special attack settings",
             position = 40,
-            closedByDefault = true
+            closedByDefault = false
     )
     String specSettings = "specSettings";
 
@@ -171,7 +208,7 @@ public interface VardorvisPluginConfig extends Config {
     )
     @Range(
             min = 0,
-            max = 700
+            max = 1400
     )
     default int specHpMinimum() {
         return 100;
@@ -186,7 +223,7 @@ public interface VardorvisPluginConfig extends Config {
     )
     @Range(
             min = 0,
-            max = 700
+            max = 1400
     )
     default int specHpMaximum() {
         return 700;
@@ -215,5 +252,67 @@ public interface VardorvisPluginConfig extends Config {
     )
     default Keybind startHotkey() {
         return null;
+    }
+
+
+    @ConfigSection(
+            name = "Debug settings",
+            description = "Debug settings",
+            position = 100,
+            closedByDefault = true
+    )
+    String debugSettings = "debugSettings";
+
+    @ConfigItem(
+            keyName = "drawDangerousTiles",
+            name = "Draw dangerous tiles",
+            description = "Toggles on drawing dangerous tiles",
+            position = 3,
+            section = debugSettings
+    )
+    default boolean drawDangerousTiles() {
+        return false;
+    }
+    @ConfigItem(
+            keyName = "drawVardorvis",
+            name = "Draw Vardorvis",
+            description = "Toggles on drawing Vardorvis true tile",
+            position = 4,
+            section = debugSettings
+    )
+    default boolean drawVardorvis() {
+        return false;
+    }
+    @ConfigItem(
+            keyName = "drawAxes",
+            name = "Draw axes",
+            description = "Toggles on drawing axes' true tiles",
+            position = 4,
+            section = debugSettings
+    )
+    default boolean drawAxes() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "drawTendrils",
+            name = "Draw tendrils",
+            description = "Toggles on drawing tendrils' true tiles",
+            position = 4,
+            section = debugSettings
+    )
+    default boolean drawTendrils() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "awakenedMode",
+            name = "Awakened mode",
+            description = "Toggles on awakened mode",
+            position = 5,
+            section = debugSettings
+    )
+    default boolean awakenedMode() {
+        return false;
     }
 }
