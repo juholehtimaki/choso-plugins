@@ -6,8 +6,10 @@ import com.theplug.PaistiUtils.API.NPCTickSimulation.NPCTickSimulation;
 import com.theplug.PaistiUtils.API.Potions.BoostPotion;
 import com.theplug.PaistiUtils.API.Prayer.PPrayer;
 import com.theplug.PaistiUtils.API.Spells.Necromancy;
+import com.theplug.PaistiUtils.Hooks.Hooks;
 import com.theplug.PaistiUtils.PathFinding.LocalPathfinder;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
+import com.theplug.VardorvisPlugin.BankingMethod;
 import com.theplug.VardorvisPlugin.VardorvisPlugin;
 import com.theplug.VardorvisPlugin.VardorvisPluginConfig;
 import lombok.extern.slf4j.Slf4j;
@@ -558,7 +560,7 @@ public class FightVardorvisState implements State {
         var drankPotion = false;
         for (var boostPotion : potionsToDrink) {
             if (boostPotion.drink()) {
-                Utility.sendGameMessage("Drank " + boostPotion.name(), "AutoVardorvis");
+                //Utility.sendGameMessage("Drank " + boostPotion.name(), "AutoVardorvis");
                 lastDrankOnTick.set(Utility.getTickCount());
             }
             return true;
@@ -790,22 +792,59 @@ public class FightVardorvisState implements State {
 
     public boolean teleportToRestock() {
         for (int attempt = 1; attempt <= 3; attempt++) {
-            var locationBeforeTp = Walking.getPlayerLocation();
-            var teleport = Inventory.search().withName("Teleport to house").first();
-            if (teleport.isEmpty()) {
-                Utility.sendGameMessage("Stopping because no teleport found", "AutoVardorvis");
-                plugin.stop();
-                return false;
+            if (config.bankingMethod() == BankingMethod.FEROX) {
+                if (handleRingOfDuelingRestock()) {
+                    Utility.sleepGaussian(600, 1200);
+                    break;
+                }
             }
-            if (Interaction.clickWidget(teleport.get(), "Break") &&
-                    Utility.sleepUntilCondition(() -> Walking.getPlayerLocation().distanceTo(locationBeforeTp) > 15, 3600, 600)) {
-                Utility.sleepGaussian(600, 1200);
-                Utility.sleepUntilCondition(House::isPlayerInsideHouse);
-                break;
+            if (config.bankingMethod() == BankingMethod.HOUSE) {
+                if (handleHouseTeleRestock()) {
+                    break;
+                }
             }
             Utility.sleepGaussian(1000, 2000);
         }
         return true;
+    }
+
+    public boolean handleHouseTeleRestock() {
+        var locationBeforeTp = Walking.getPlayerLocation();
+        var teleport = Inventory.search().withName("Teleport to house").first();
+        if (teleport.isEmpty()) {
+            Utility.sendGameMessage("Stopping because no house teleport tab found", "AutoVardorvis");
+            plugin.stop();
+            return false;
+        }
+        if (Interaction.clickWidget(teleport.get(), "Break") &&
+                Utility.sleepUntilCondition(() -> Walking.getPlayerLocation().distanceTo(locationBeforeTp) > 15, 3600, 600)) {
+            Utility.sleepGaussian(600, 1200);
+            Utility.sleepUntilCondition(House::isPlayerInsideHouse);
+            return true;
+        }
+        return false;
+    }
+
+    public boolean handleRingOfDuelingRestock() {
+        var ringOfDueling = Inventory.search().matchesWildCardNoCase("ring of dueling*").first();
+        if (ringOfDueling.isEmpty()) {
+            Utility.sendGameMessage("Stopping because no ring of dueling found", "AutoVardorvis");
+            plugin.stop();
+            return false;
+        }
+        var locationBeforeTp = Walking.getPlayerLocation();
+        Interaction.clickWidget(ringOfDueling.get(), "Rub");
+        Utility.runOncePerClientTickTask(() -> {
+            MenuAction menuAction = MenuAction.WIDGET_CONTINUE;
+            int p0 = 3;
+            int p1 = 14352385;
+            int itemId = -1;
+            int objectId = 0;
+            String opt = "Continue";
+            Hooks.invokeMenuAction(p0, p1, menuAction.getId(), objectId, itemId, opt, "", 0, 0);
+            return null;
+        });
+        return Utility.sleepUntilCondition(() -> Walking.getPlayerLocation().distanceTo(locationBeforeTp) > 15, 3600, 600);
     }
 
     public boolean handleAttacking() {

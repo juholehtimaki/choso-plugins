@@ -1,5 +1,6 @@
 package com.theplug.VardorvisPlugin;
 
+import com.theplug.PaistiBreakHandler.PaistiBreakHandler;
 import com.theplug.PaistiUtils.API.*;
 import com.theplug.PaistiUtils.API.AttackTickTracker.AttackTickTracker;
 import com.theplug.PaistiUtils.Framework.ThreadedScriptRunner;
@@ -26,6 +27,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.HotkeyListener;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -52,6 +54,9 @@ public class VardorvisPlugin extends Plugin {
 
     @Inject
     public FoodStats foodStats;
+
+    @Inject
+    public PaistiBreakHandler paistiBreakHandler;
 
     List<State> states;
 
@@ -102,6 +107,7 @@ public class VardorvisPlugin extends Plugin {
         Utility.sendGameMessage("Started", "AutoVardorvis");
         initialize();
         setTotalKillCount(0);
+        paistiBreakHandler.startPlugin(this);
         runner.start();
     }
 
@@ -126,6 +132,7 @@ public class VardorvisPlugin extends Plugin {
             this.threadedOnGameTick();
             return null;
         });
+        paistiBreakHandler.registerPlugin(this);
     }
 
     private void threadedLoop() {
@@ -140,6 +147,7 @@ public class VardorvisPlugin extends Plugin {
 
     @Override
     protected void shutDown() throws Exception {
+        paistiBreakHandler.unregisterPlugin(this);
         stop();
         keyManager.unregisterKeyListener(startHotkeyListener);
         overlayManager.remove(sceneOverlay);
@@ -180,6 +188,7 @@ public class VardorvisPlugin extends Plugin {
         if (Utility.isLoggedIn()) {
             Utility.sendGameMessage("Stopped", "AutoVardorvis");
         }
+        paistiBreakHandler.stopPlugin(this);
         runner.stop();
     }
 
@@ -202,6 +211,7 @@ public class VardorvisPlugin extends Plugin {
 
         runner.onGameTick();
     }
+
     public Duration getRunTimeDuration() {
         return Duration.between(runner.getStartedAt(), Instant.now());
     }

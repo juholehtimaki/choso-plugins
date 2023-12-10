@@ -42,6 +42,7 @@ public class RestockState implements State {
 
     private static boolean handleRejuvenationPoolPoh() {
         log.debug("handleRejuvenationPoolPoh");
+        if (!House.isPlayerInsideHouse()) return false;
         var poolOfRefreshment = TileObjects.search().withName("Ornate pool of Rejuvenation").withAction("Drink").nearestToPlayer();
         if (poolOfRefreshment.isEmpty()) {
             Utility.sleepGaussian(1200, 1600);
@@ -66,9 +67,28 @@ public class RestockState implements State {
         return false;
     }
 
+    private static boolean handleRejuvenationPoolFerox() {
+        var poolOfRefreshment = TileObjects.search().withName("Pool of Refreshment").withAction("Drink").nearestToPlayer();
+        if (poolOfRefreshment.isEmpty()) {
+            Utility.sleepGaussian(1200, 1600);
+            poolOfRefreshment = TileObjects.search().withName("Pool of Refreshment").withAction("Drink").nearestToPlayer();
+            if (poolOfRefreshment.isEmpty()) {
+                return false;
+            }
+        }
+
+        Interaction.clickTileObject(poolOfRefreshment.get(), "Drink");
+        Utility.sleepUntilCondition(() -> {
+            var _missingHp = Utility.getRealSkillLevel(Skill.HITPOINTS) - Utility.getBoostedSkillLevel(Skill.HITPOINTS);
+            var _missingPrayer = Utility.getRealSkillLevel(Skill.PRAYER) - Utility.getBoostedSkillLevel(Skill.PRAYER);
+            return _missingPrayer <= 0 && _missingHp <= 0;
+        }, 10000, 600);
+        Utility.sleepGaussian(600, 1100);
+        return Utility.getRealSkillLevel(Skill.HITPOINTS) <= Utility.getBoostedSkillLevel(Skill.HITPOINTS) && Utility.getRealSkillLevel(Skill.PRAYER) <= Utility.getBoostedSkillLevel(Skill.PRAYER);
+    }
+
     public boolean handleRestoreWithPool() {
         log.debug("handleRestoreWithPool");
-        if (!House.isPlayerInsideHouse()) return false;
         var missingHp = Utility.getRealSkillLevel(Skill.HITPOINTS) - Utility.getBoostedSkillLevel(Skill.HITPOINTS);
         var missingPrayer = Utility.getRealSkillLevel(Skill.PRAYER) - Utility.getBoostedSkillLevel(Skill.PRAYER);
         if (missingPrayer <= 0 && missingHp <= 0) {
@@ -77,6 +97,12 @@ public class RestockState implements State {
 
         if (config.bankingMethod() == BankingMethod.HOUSE) {
             if (handleRejuvenationPoolPoh()) {
+                return true;
+            }
+        }
+
+        if (config.bankingMethod() == BankingMethod.FEROX) {
+            if (handleRejuvenationPoolFerox()) {
                 return true;
             }
         }
@@ -130,7 +156,7 @@ public class RestockState implements State {
         log.debug("handleBanking");
         if (loadout.isSatisfied()) return false;
 
-        if (config.bankingMethod() == BankingMethod.HOUSE) {
+        if (config.bankingMethod() == BankingMethod.HOUSE || config.bankingMethod() == BankingMethod.FEROX ) {
             return handleGenericBanking();
         }
         return false;
@@ -180,8 +206,8 @@ public class RestockState implements State {
         log.debug("handleWalkToVardorvis");
         if (!loadout.isSatisfied()) return false;
 
-        if (config.bankingMethod() == BankingMethod.HOUSE) {
-            if (handleTravel()){
+        if (config.bankingMethod() == BankingMethod.HOUSE || config.bankingMethod() == BankingMethod.FEROX) {
+            if (handleTravel()) {
                 return false;
             }
         }
@@ -209,13 +235,17 @@ public class RestockState implements State {
             return;
         }
         if (handleBanking()) {
-            if (config.stopAfterMinutes() > 0 && plugin.getRunTimeDuration().toMillis() / 60000 > config.stopAfterMinutes()) {
-                Utility.sendGameMessage("Stopping after configured " + config.stopAfterMinutes() + " minutes", "AutoVardorvis");
-                plugin.stop();
-                return;
-            }
+            Utility.sleepGaussian(200, 400);
+            return;
         }
-        if (handleWalkToVardorvis()){
+        if (plugin.paistiBreakHandler.shouldBreak(plugin)) {
+            Utility.sendGameMessage("Taking a break", "AutoVardorvis");
+            plugin.paistiBreakHandler.startBreak(plugin);
+
+            Utility.sleepGaussian(1000, 2000);
+            Utility.sleepUntilCondition(() -> !plugin.paistiBreakHandler.isBreakActive(plugin) && Utility.isLoggedIn(), 99999999, 5000);
+        }
+        if (handleWalkToVardorvis()) {
             Utility.sleepGaussian(200, 400);
             return;
         }

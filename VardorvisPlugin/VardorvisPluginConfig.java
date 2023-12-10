@@ -29,7 +29,7 @@ public interface VardorvisPluginConfig extends Config {
             position = 1,
             section = bankingSettings
     )
-    default com.theplug.VardorvisPlugin.BankingMethod bankingMethod() {
+    default BankingMethod bankingMethod() {
         return BankingMethod.HOUSE;
     }
 
@@ -227,21 +227,6 @@ public interface VardorvisPluginConfig extends Config {
     )
     default int specHpMaximum() {
         return 700;
-    }
-
-
-    @ConfigItem(
-            keyName = "stopAfterMinutes",
-            name = "Stop after minutes",
-            description = "Set to make the plugin stop when restocking after this amount of minutes has passed. Set to 0 to disable.",
-            position = 54
-    )
-    @Range(
-            min = 15,
-            max = 360
-    )
-    default int stopAfterMinutes() {
-        return 360;
     }
 
     @ConfigItem(
