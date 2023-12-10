@@ -1,6 +1,6 @@
 package com.theplug.AutoNexPlugin;
 
-import com.theplug.GearSwitcherPlugin.GearSwitcherScript;
+import com.theplug.PaistiBreakHandler.PaistiBreakHandler;
 import com.theplug.PaistiUtils.API.*;
 import com.theplug.PaistiUtils.API.AttackTickTracker.AttackTickTracker;
 import com.theplug.PaistiUtils.API.Prayer.PPrayer;
@@ -70,7 +70,10 @@ public class AutoNexPlugin extends Plugin {
     RestockState restockState;
 
     static final int NEX_ALTAR = 42965;
+    private static final int ANCIENT_FORGE = 42966;
 
+    @Inject
+    public PaistiBreakHandler paistiBreakHandler;
 
     @Inject
     private AutoNexPluginScreenOverlay screenOverlay;
@@ -132,6 +135,7 @@ public class AutoNexPlugin extends Plugin {
         Utility.sendGameMessage("Started", "AutoNex");
         setStopHasBeenRequested(false);
         initialize();
+        paistiBreakHandler.startPlugin(this);
         runner.start();
     }
 
@@ -156,14 +160,20 @@ public class AutoNexPlugin extends Plugin {
             this.threadedOnGameTick();
             return null;
         });
+        paistiBreakHandler.registerPlugin(this);
     }
 
     private void threadedLoop() {
-        for (var state : states) {
-            if (state.shouldExecuteState()) {
-                state.threadedLoop();
-                return;
+        try {
+            for (var state : states) {
+                if (state.shouldExecuteState()) {
+                    state.threadedLoop();
+                    return;
+                }
             }
+        } catch (Exception e) {
+            if (e instanceof InterruptedException) throw e;
+            log.error("AutoNex: threadedLoop - catched an error", e);
         }
         Utility.sleepGaussian(100, 200);
     }
@@ -174,10 +184,11 @@ public class AutoNexPlugin extends Plugin {
 
     @Override
     protected void shutDown() throws Exception {
-        stop();
+        paistiBreakHandler.unregisterPlugin(this);
         keyManager.unregisterKeyListener(startHotkeyListener);
         overlayManager.remove(screenOverlay);
         overlayManager.remove(sceneOverlay);
+        stop();
     }
 
     private void initialize() {
@@ -211,11 +222,16 @@ public class AutoNexPlugin extends Plugin {
     }
 
     private void threadedOnGameTick() {
-        for (var state : states) {
-            if (state.shouldExecuteState()) {
-                state.threadedOnGameTick();
-                break;
+        try {
+            for (var state : states) {
+                if (state.shouldExecuteState()) {
+                    state.threadedOnGameTick();
+                    break;
+                }
             }
+        } catch (Exception e) {
+            if (e instanceof InterruptedException) throw e;
+            log.error("AutoNex: threadedOnGameTick - catched an error", e);
         }
     }
 
@@ -224,6 +240,7 @@ public class AutoNexPlugin extends Plugin {
         if (Utility.isLoggedIn()) {
             Utility.sendGameMessage("Stopped", "AutoNex");
         }
+        paistiBreakHandler.stopPlugin(this);
         runner.stop();
     }
 
@@ -305,11 +322,11 @@ public class AutoNexPlugin extends Plugin {
     }
 
     public boolean isInsideKcRoom() {
-        if (isInsideNexRoom() || isInsideBankRoom()) return false;
-        var npcs = NPCs.search().withName(config.selectedNpc().toString()).result();
-        if (npcs.isEmpty()) return false;
+        var ancientForge = TileObjects.search().withId(ANCIENT_FORGE).first();
+        if (ancientForge.isEmpty()) return false;
         LocalPathfinder.ReachabilityMap reachabilityMap = LocalPathfinder.getReachabilityMap();
-        return npcs.stream().anyMatch(reachabilityMap::isReachable);
+        var forgeLocWithOffset = ancientForge.get().getWorldLocation().dy(-5);
+        return reachabilityMap.isReachable(forgeLocWithOffset);
     }
 
 

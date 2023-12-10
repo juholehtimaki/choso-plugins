@@ -309,7 +309,7 @@ public interface AutoNexPluginConfig extends Config {
 
     @ConfigItem(
             keyName = "killSwitchCommand",
-            name = "Kill Switch Command",
+            name = "Kill switch command",
             description = "Seeing the command in the chat triggers plugin to request stop",
             position = 4,
             section = teamSettings
@@ -317,5 +317,49 @@ public interface AutoNexPluginConfig extends Config {
 
     default String killSwitchCommand() {
         return "time to go home bois";
+    }
+
+    @ConfigItem(
+            keyName = "killBloodReavers",
+            name = "Kill Blood Reavers",
+            description = "Determines whether the plugin should attempt to kill blood reavers if they are in range. This does not contribute to the kill",
+            position = 5,
+            section = teamSettings
+    )
+    default boolean killBloodReavers() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "forceKillMinion",
+            name = "Force kill minions",
+            description = "Force kill minion at a cost of losing HP. This is an experimental feature",
+            position = 6,
+            section = teamSettings
+    )
+    default boolean forceKillMinion() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "playSafelyShadowPhase",
+            name = "Play safer shadow minion",
+            description = "Play more safely when force killing minion. This is an experimental feature which should only be used in private mass",
+            position = 7,
+            section = teamSettings
+    )
+    default boolean playSafelyShadowPhase() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "experimentalReavers",
+            name = "Experimental reavers",
+            description = "EXPERIMENTAL, DO NOT USE",
+            position = 8,
+            section = teamSettings
+    )
+    default boolean experimentalReavers() {
+        return false;
     }
 }

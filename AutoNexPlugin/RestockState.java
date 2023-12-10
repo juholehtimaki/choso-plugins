@@ -21,8 +21,6 @@ public class RestockState implements State {
 
     static final int NEX_DOOR = 42967;
 
-    static WorldService worldService = RuneLite.getInjector().getInstance(WorldService.class);
-
     public RestockState(AutoNexPlugin plugin, AutoNexPluginConfig config) {
         super();
         this.plugin = plugin;
@@ -164,6 +162,13 @@ public class RestockState implements State {
             if (handleLoadout()) {
                 Utility.sleepGaussian(200, 300);
                 return;
+            }
+            if (plugin.paistiBreakHandler.shouldBreak(plugin)) {
+                Utility.sendGameMessage("Taking a break", "AutoNex");
+                plugin.paistiBreakHandler.startBreak(plugin);
+
+                Utility.sleepGaussian(1000, 2000);
+                Utility.sleepUntilCondition(() -> !plugin.paistiBreakHandler.isBreakActive(plugin) && Utility.isLoggedIn(), 99999999, 5000);
             }
             if (handleEnterNex()) {
                 Utility.sleepGaussian(2000, 4000);

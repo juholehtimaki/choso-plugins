@@ -147,7 +147,6 @@ public class FightNexState implements State {
         return Utility.random(15, 20);
     }
 
-
     public int generateNextPrayerPotAt() {
         return Utility.random(30, 40);
     }
@@ -253,7 +252,7 @@ public class FightNexState implements State {
         return glacies.orElse(null);
     }
 
-    public WorldPoint getOptimalTile() {
+    public WorldPoint getOptimalTileSafe() {
         if (!isNexPresent()) return null;
         var nexWorldArea = getNex().getWorldArea();
         var playerLoc = Walking.getPlayerLocation();
@@ -318,6 +317,114 @@ public class FightNexState implements State {
         }
     }
 
+    public WorldPoint getOptimalTileExperimentalMinion() {
+        if (!isNexPresent()) return null;
+        var nexWorldArea = getNex().getWorldArea();
+        var playerLoc = Walking.getPlayerLocation();
+        LocalPathfinder.ReachabilityMap reachabilityMap = LocalPathfinder.getReachabilityMap();
+        List<WorldPoint> tiles = new ArrayList<>();
+        for (var dx = -35; dx <= 35; dx++) {
+            for (var dy = -35; dy <= 35; dy++) {
+                var tile = playerLoc.dx(dx).dy(dy);
+                if (dangerousTiles.contains(tile)) continue;
+                if (!reachabilityMap.isReachable(tile)) continue;
+                if (nexWorldArea.distanceTo(tile) < 1) continue;
+                tiles.add(tile);
+            }
+        }
+
+        if (plugin.config.shouldRandomizeOptimalTile() && isNexPresentAndAttackable()) {
+            Collections.shuffle(tiles);
+
+            var closestTileCost = tiles.stream().mapToInt(reachabilityMap::getCostTo).min().orElse(0);
+            tiles.sort(Comparator.comparingInt(t -> Math.max(closestTileCost + 1, reachabilityMap.getCostTo(t))));
+        } else {
+            tiles.sort(Comparator.comparingInt(reachabilityMap::getCostTo));
+        }
+
+        if (tiles.isEmpty()) {
+            Utility.sendGameMessage("No optimal tiles available", "AutoNex");
+            return null;
+        }
+
+        var minionToKill = getDesiredMinion();
+        if (minionToKill == null) {
+            return null;
+        }
+        var minionWorldArea = minionToKill.getWorldArea();
+
+        var tilesWithinRangeOfMinion = tiles.stream().filter(
+                t -> t.distanceTo(minionWorldArea) <= plugin.attackTickTracker.getPlayerAttackRange() && t.toWorldArea().hasLineOfSightTo(PaistiUtils.getClient(), minionWorldArea)
+        ).sorted(Comparator.comparingInt(t -> {
+            var dist = -t.distanceTo(nexWorldArea);
+            if (currMinion.get() == Minion.FUMUS && dist < -5) {
+                return -5;
+            }
+            if (dist < -10) return -10;
+            return dist;
+        })).collect(Collectors.toList());
+
+        if (tilesWithinRangeOfMinion.isEmpty()) {
+            Utility.sendGameMessage("Something went wrong when attempting to find suitable tile for force killing minion", "AutoNex");
+            return null;
+        }
+
+        return tilesWithinRangeOfMinion.get(0);
+    }
+
+    public WorldPoint getOptimalTileExperimentalBloodReaver() {
+        if (!isNexPresent()) return null;
+        var nexWorldArea = getNex().getWorldArea();
+        var playerLoc = Walking.getPlayerLocation();
+        LocalPathfinder.ReachabilityMap reachabilityMap = LocalPathfinder.getReachabilityMap();
+        List<WorldPoint> tiles = new ArrayList<>();
+        for (var dx = -35; dx <= 35; dx++) {
+            for (var dy = -35; dy <= 35; dy++) {
+                var tile = playerLoc.dx(dx).dy(dy);
+                if (dangerousTiles.contains(tile)) continue;
+                if (!reachabilityMap.isReachable(tile)) continue;
+                if (nexWorldArea.distanceTo(tile) < MINIMUM_DISTANCE_TO_NEX.get()) continue;
+                tiles.add(tile);
+            }
+        }
+
+        if (plugin.config.experimentalReavers()) {
+            tiles.sort(Comparator.comparingInt(reachabilityMap::getCostTo));
+        } else {
+            if (plugin.config.shouldRandomizeOptimalTile() && isNexPresentAndAttackable()) {
+                Collections.shuffle(tiles);
+
+                var closestTileCost = tiles.stream().mapToInt(reachabilityMap::getCostTo).min().orElse(0);
+                tiles.sort(Comparator.comparingInt(t -> Math.max(closestTileCost + 1, reachabilityMap.getCostTo(t))));
+            } else {
+                tiles.sort(Comparator.comparingInt(reachabilityMap::getCostTo));
+            }
+        }
+
+        if (tiles.isEmpty()) {
+            Utility.sendGameMessage("No optimal tiles available", "AutoNex");
+            return null;
+        }
+
+        var bloodReaver = NPCs.search().withName("Blood Reaver").alive().nearestToPlayerTrueDistance();
+
+        if (bloodReaver.isEmpty()) {
+            return null;
+        }
+        var bloodReaverWorldArea = bloodReaver.get().getWorldArea();
+
+        var tilesWithinRangeOfBloodReaver = tiles.stream().filter(
+                t -> t.distanceTo(bloodReaverWorldArea) <= plugin.attackTickTracker.getPlayerAttackRange() && t.toWorldArea().hasLineOfSightTo(PaistiUtils.getClient(), bloodReaverWorldArea)
+        ).sorted(Comparator.comparingInt(t -> t.distanceTo(nexWorldArea))).collect(Collectors.toList());
+
+        if (tilesWithinRangeOfBloodReaver.isEmpty()) {
+            Utility.sendGameMessage("Something went wrong when attempting to find suitable tile for force killing blood reaver", "AutoNex");
+            return null;
+        }
+
+        return tilesWithinRangeOfBloodReaver.get(0);
+    }
+
     @Override
     public boolean shouldExecuteState() {
         return plugin.isInsideNexRoom();
@@ -332,24 +439,37 @@ public class FightNexState implements State {
     public void onGameTick(GameTick e) {
         if (!shouldExecuteState()) return;
 
-        optimalTile.set(getOptimalTile());
+        try {
+            if (plugin.config.forceKillMinion() && (currMinion.get() == Minion.FUMUS || currMinion.get() == Minion.UMBRA)) {
+                optimalTile.set(getOptimalTileExperimentalMinion());
+            } else if (plugin.config.killBloodReavers() && NPCs.search().withName("Blood Reaver").alive().first().isPresent()) {
+                optimalTile.set(getOptimalTileExperimentalBloodReaver());
+            } else {
+                optimalTile.set(getOptimalTileSafe());
+            }
 
-        watchNexHp();
+            watchNexHp();
 
-        var relevantNpcs = NPCs.search().withinDistance(32).result();
-        var _tickSimulation = new NPCTickSimulation(PaistiUtils.getClient(), plugin.attackTickTracker, relevantNpcs);
-        var target = currMinion.get() == null ? getNex() : getDesiredMinion();
-        if (target != null) {
-            _tickSimulation.getPlayerState().setInteracting(target);
-            _tickSimulation.simulatePlayerTick(PaistiUtils.getClient());
-        }
-        var newPlayerLocation = _tickSimulation.getPlayerState().getArea().toWorldPoint();
-        simulatedPlayerLocationAfterAttack.set(newPlayerLocation);
-        canAttackSafelyThisTick.set(true);
+            var relevantNpcs = NPCs.search().withinDistance(32).result();
+            var _tickSimulation = new NPCTickSimulation(PaistiUtils.getClient(), plugin.attackTickTracker, relevantNpcs);
+            var target = currMinion.get() == null ? getNex() : getDesiredMinion();
+            if (target != null) {
+                _tickSimulation.getPlayerState().setInteracting(target);
+                _tickSimulation.simulatePlayerTick(PaistiUtils.getClient());
+            }
+            var newPlayerLocation = _tickSimulation.getPlayerState().getArea().toWorldPoint();
+            simulatedPlayerLocationAfterAttack.set(newPlayerLocation);
+            canAttackSafelyThisTick.set(true);
 
 
-        if (dangerousTiles.stream().anyMatch(t -> t.equals(newPlayerLocation) || (getNex() != null && newPlayerLocation.distanceTo(getNex().getWorldArea()) < MINIMUM_DISTANCE_TO_NEX.get()))) {
-            canAttackSafelyThisTick.set(false);
+            if (dangerousTiles.stream().anyMatch(t -> t.equals(newPlayerLocation) || (getNex() != null && newPlayerLocation.distanceTo(getNex().getWorldArea()) < MINIMUM_DISTANCE_TO_NEX.get()))) {
+                if (!plugin.config.forceKillMinion()) {
+                    canAttackSafelyThisTick.set(false);
+                }
+            }
+        } catch (Exception err) {
+            if (err instanceof InterruptedException) throw err;
+            log.error("AutoNex: onGameTick - catched an error", err);
         }
     }
 
@@ -484,9 +604,25 @@ public class FightNexState implements State {
         if (cachedDesiredTarget != null && cachedDesiredTargetTick == Utility.getTickCount()) {
             return cachedDesiredTarget;
         }
+
+        if (plugin.config.killBloodReavers()) {
+            var playerLoc = Walking.getPlayerLocation();
+            var bloodReavers = NPCs.search()
+                    .withName("Blood Reaver")
+                    .alive()
+                    .filter(npc -> npc.getWorldArea().distanceTo(playerLoc) <= plugin.attackTickTracker.getPlayerAttackRange())
+                    .result();
+            if (!bloodReavers.isEmpty()) {
+                bloodReavers.sort(Comparator.comparingInt(t -> t.getWorldArea().distanceTo(playerLoc)));
+                cachedDesiredTargetTick = Utility.getTickCount();
+                cachedDesiredTarget = bloodReavers.get(0);
+                return cachedDesiredTarget;
+            }
+        }
+
         var desiredMinion = currMinion.get();
         if (desiredMinion != null) {
-            var minion = NPCs.search().withName(desiredMinion.toString()).withAction("Attack").alive().first();
+            var minion = NPCs.search().withName(desiredMinion.toString()).alive().first();
             if (minion.isEmpty()) {
                 var nex = getNex();
                 if (nex == null) {
@@ -531,6 +667,10 @@ public class FightNexState implements State {
 
         if (shouldAvoidNex.get() && getNexDistance() < MINIMUM_DISTANCE_TO_NEX.get()) {
             Utility.sendGameMessage("Not attacking Nex due to containment", "AutoNex");
+            return false;
+        }
+
+        if (plugin.config.playSafelyShadowPhase() && currMinion.get() == Minion.UMBRA && getNexDistance() < 3) {
             return false;
         }
 

@@ -31,7 +31,7 @@ public class KillCountState implements State {
 
     @Override
     public String name() {
-        return "Preparation";
+        return "Getting KC";
     }
 
     public int generateNextEatAtHp() {
