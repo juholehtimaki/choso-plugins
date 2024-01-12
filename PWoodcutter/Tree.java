@@ -1,5 +1,8 @@
-package com.example.PWoodcutter;
+package com.theplug.PWoodcutter;
 
+import com.theplug.DontObfuscate;
+
+@DontObfuscate
 public enum Tree {
 
     Regular("Tree"),

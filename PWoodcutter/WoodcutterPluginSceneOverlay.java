@@ -1,10 +1,7 @@
-package com.example.PWoodcutter;
+package com.theplug.PWoodcutter;
 
 
-import com.example.PaistiUtils.PaistiUtils;
-import com.example.VorkathKillerPlugin.States.FightVorkathState;
-import com.example.VorkathKillerPlugin.VorkathKillerPlugin;
-import com.example.VorkathKillerPlugin.VorkathKillerPluginConfig;
+import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import com.google.common.base.Strings;
 import com.google.inject.Inject;
 import net.runelite.api.Client;

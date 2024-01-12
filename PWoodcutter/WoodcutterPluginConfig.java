@@ -1,4 +1,4 @@
-package com.example.PWoodcutter;
+package com.theplug.PWoodcutter;
 
 import net.runelite.client.config.*;
 
@@ -64,5 +64,15 @@ public interface WoodcutterPluginConfig extends Config {
 
     default int targetLevel() {
         return 99;
+    }
+
+    @ConfigItem(
+            keyName = "hopOnPlayerNearby",
+            name = "Hop on nearby player",
+            description = "Hop if players are within the chopping area",
+            position = 16
+    )
+    default boolean hopOnPlayerNearby() {
+        return false;
     }
 }
