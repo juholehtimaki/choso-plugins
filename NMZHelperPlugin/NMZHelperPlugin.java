@@ -1,11 +1,11 @@
-package com.PaistiPlugins.NMZHelperPlugin;
+package com.theplug.NMZHelperPlugin;
 
-import com.PaistiPlugins.PaistiUtils.API.*;
-import com.PaistiPlugins.PaistiUtils.API.Loadouts.InventoryLoadout;
-import com.PaistiPlugins.PaistiUtils.API.Potions.BoostPotion;
-import com.PaistiPlugins.PaistiUtils.API.Prayer.PPrayer;
-import com.PaistiPlugins.PaistiUtils.Framework.ThreadedScriptRunner;
-import com.PaistiPlugins.PaistiUtils.PaistiUtils;
+import com.theplug.PaistiUtils.API.*;
+import com.theplug.PaistiUtils.API.Loadouts.InventoryLoadout;
+import com.theplug.PaistiUtils.API.Potions.BoostPotion;
+import com.theplug.PaistiUtils.API.Prayer.PPrayer;
+import com.theplug.PaistiUtils.Framework.ThreadedScriptRunner;
+import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +25,7 @@ import java.util.Arrays;
 import java.util.stream.Collectors;
 
 @Slf4j
-@PluginDescriptor(name = "PNMZHelper", description = "Drinks potions, specs, rock cakes etc. in NMZ", enabledByDefault = false, tags = {"Choso", "NMZ"})
+@PluginDescriptor(name = "PNMZHelper", description = "Drinks potions, specs, rock cakes etc. in NMZ", enabledByDefault = false, tags = {"paisti", "nmz"})
 public class NMZHelperPlugin extends Plugin {
 
     int nextPrayerPotAt = generateNextPrayerPotAt();
@@ -57,6 +57,8 @@ public class NMZHelperPlugin extends Plugin {
             pluginManager.setPluginEnabled(this, false);
             return;
         }
+
+        loadoutBeforeSwitch = null;
 
         runner.setLoopAction(() -> {
             this.threadedLoop();
@@ -225,7 +227,7 @@ public class NMZHelperPlugin extends Plugin {
     private boolean useSpecUntilOutOfEnergy = false;
 
     private boolean isPowerSurgeActive() {
-        return System.currentTimeMillis() - powerSurgePickedUpAt < 30000;
+        return System.currentTimeMillis() - powerSurgePickedUpAt < 45000;
     }
 
     private boolean shouldSpec() {
@@ -233,7 +235,7 @@ public class NMZHelperPlugin extends Plugin {
         if (config.onlySpecDuringPowerSurge() && !isPowerSurgeActive()) return false;
         var specEnergy = Utility.getSpecialAttackEnergy();
         if (specEnergy < config.specEnergyMinimum()) {
-            if (System.currentTimeMillis() - lastSpecUsedAt > 4200) {
+            if (System.currentTimeMillis() - lastSpecUsedAt > 3600) {
                 useSpecUntilOutOfEnergy = false;
             }
             return false;
@@ -316,7 +318,9 @@ public class NMZHelperPlugin extends Plugin {
             Utility.sendGameMessage("Switched to spec gear", "PNMZHelper");
             loadoutBeforeSwitch = tempLoadoutBeforeSwitch;
         }
-        if (!Utility.isSpecialAttackEnabled() && Utility.getSpecialAttackEnergy() >= config.specEnergyMinimum()) {
+        if (!Utility.isSpecialAttackEnabled()
+                && Utility.getSpecialAttackEnergy() >= config.specEnergyMinimum()
+                && specWeaponLoadout.isSatisfied(true)) {
             Utility.specialAttack();
             lastSpecUsedAt = System.currentTimeMillis();
             Utility.sendGameMessage("Special attacking", "PNMZHelper");
@@ -383,15 +387,15 @@ public class NMZHelperPlugin extends Plugin {
             Utility.sleepGaussian(175, 250);
             return;
         }
+        if (handlePrayerToggling()) {
+            Utility.sleepGaussian(175, 250);
+            return;
+        }
         if (handleSpecialAttacking()) {
             Utility.sleepGaussian(175, 250);
             return;
         }
         if (handlePowerups()) {
-            Utility.sleepGaussian(175, 250);
-            return;
-        }
-        if (handlePrayerToggling()) {
             Utility.sleepGaussian(175, 250);
             return;
         }
@@ -404,8 +408,10 @@ public class NMZHelperPlugin extends Plugin {
 
     @Subscribe
     private void onChatMessage(ChatMessage event) {
-        if (event.getMessage().toLowerCase().contains("surge of special attack power")) {
+        if (event.getMessage().toLowerCase().contains("feel a surge of special attack power")) {
             powerSurgePickedUpAt = System.currentTimeMillis();
+        } else if (event.getMessage().toLowerCase().contains("surge of special attack power has ended")) {
+            powerSurgePickedUpAt = -1;
         }
     }
 }

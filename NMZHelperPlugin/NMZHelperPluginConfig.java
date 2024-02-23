@@ -1,4 +1,4 @@
-package com.PaistiPlugins.NMZHelperPlugin;
+package com.theplug.NMZHelperPlugin;
 
 import net.runelite.client.config.*;
 
