@@ -1,7 +1,7 @@
-package com.PaistiPlugins.GearSwitcherPlugin;
+package com.theplug.GearSwitcherPlugin;
 
-import com.PaistiPlugins.DontObfuscate;
-import com.PaistiPlugins.PaistiUtils.API.Prayer.PPrayer;
+import com.theplug.DontObfuscate;
+import com.theplug.PaistiUtils.API.Prayer.PPrayer;
 import net.runelite.api.MenuAction;
 import net.runelite.api.events.MenuOptionClicked;
 

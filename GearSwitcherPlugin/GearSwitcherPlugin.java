@@ -1,6 +1,7 @@
-package com.PaistiPlugins.GearSwitcherPlugin;
+package com.theplug.GearSwitcherPlugin;
 
-import com.PaistiPlugins.PaistiUtils.PaistiUtils;
+import com.theplug.PaistiUtils.API.AttackTickTracker.AttackTickTracker;
+import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
 import lombok.Getter;
@@ -25,7 +26,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
-@PluginDescriptor(name = "PGearSwitcher", description = "Gear switching hotkeys / triggers", enabledByDefault = false, tags = {"Choso", "Combat"})
+@PluginDescriptor(name = "PGearSwitcher", description = "Gear switching hotkeys / triggers", enabledByDefault = false, tags = {"paisti", "combat"})
 public class GearSwitcherPlugin extends Plugin {
 
     @Inject
@@ -46,6 +47,8 @@ public class GearSwitcherPlugin extends Plugin {
     @Getter
     static Actor lastTargetInteractedWithMe;
 
+    @Inject
+    public AttackTickTracker attackTickTracker;
 
     private final HotkeyListener firstHotkeyListener = new HotkeyListener(() -> config.firstLoadoutHotkey() != null ? config.firstLoadoutHotkey() : new Keybind(0, 0)) {
         @Override
@@ -100,11 +103,11 @@ public class GearSwitcherPlugin extends Plugin {
         keyManager.registerKeyListener(thirdHotkeyListener);
         keyManager.registerKeyListener(fourthHotkeyListener);
         keyManager.registerKeyListener(fifthHotkeyListener);
-        firstLoadout = GearSwitcherScript.deSerializeFromString(config.firstLoadout());
-        secondLoadout = GearSwitcherScript.deSerializeFromString(config.secondLoadout());
-        thirdLoadout = GearSwitcherScript.deSerializeFromString(config.thirdLoadout());
-        fourthLoadout = GearSwitcherScript.deSerializeFromString(config.fourthLoadout());
-        fifthLoadout = GearSwitcherScript.deSerializeFromString(config.fifthLoadout());
+        firstLoadout = GearSwitcherScript.deSerializeFromString(config.firstLoadout(), attackTickTracker);
+        secondLoadout = GearSwitcherScript.deSerializeFromString(config.secondLoadout(), attackTickTracker);
+        thirdLoadout = GearSwitcherScript.deSerializeFromString(config.thirdLoadout(), attackTickTracker);
+        fourthLoadout = GearSwitcherScript.deSerializeFromString(config.fourthLoadout(), attackTickTracker);
+        fifthLoadout = GearSwitcherScript.deSerializeFromString(config.fifthLoadout(), attackTickTracker);
         triggers.put(config.firstLoadoutTrigger(), firstLoadout);
         triggers.put(config.secondLoadoutTrigger(), secondLoadout);
         triggers.put(config.thirdLoadoutTrigger(), thirdLoadout);
@@ -147,19 +150,19 @@ public class GearSwitcherPlugin extends Plugin {
     private void onConfigChanged(ConfigChanged e) {
         if (!e.getGroup().equalsIgnoreCase("GearSwitcherPluginConfig")) return;
         if (e.getKey().equals("firstLoadout")) {
-            firstLoadout = GearSwitcherScript.deSerializeFromString(config.firstLoadout());
+            firstLoadout = GearSwitcherScript.deSerializeFromString(config.firstLoadout(), attackTickTracker);
         }
         if (e.getKey().equals("secondLoadout")) {
-            secondLoadout = GearSwitcherScript.deSerializeFromString(config.secondLoadout());
+            secondLoadout = GearSwitcherScript.deSerializeFromString(config.secondLoadout(), attackTickTracker);
         }
         if (e.getKey().equals("thirdLoadout")) {
-            thirdLoadout = GearSwitcherScript.deSerializeFromString(config.thirdLoadout());
+            thirdLoadout = GearSwitcherScript.deSerializeFromString(config.thirdLoadout(), attackTickTracker);
         }
         if (e.getKey().equals("fourthLoadout")) {
-            fourthLoadout = GearSwitcherScript.deSerializeFromString(config.fourthLoadout());
+            fourthLoadout = GearSwitcherScript.deSerializeFromString(config.fourthLoadout(), attackTickTracker);
         }
         if (e.getKey().equals("fifthLoadout")) {
-            fifthLoadout = GearSwitcherScript.deSerializeFromString(config.fifthLoadout());
+            fifthLoadout = GearSwitcherScript.deSerializeFromString(config.fifthLoadout(), attackTickTracker);
         }
         triggers.clear();
         triggers.put(config.firstLoadoutTrigger(), firstLoadout);

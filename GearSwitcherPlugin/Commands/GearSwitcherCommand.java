@@ -1,6 +1,7 @@
-package com.PaistiPlugins.GearSwitcherPlugin.Commands;
+package com.theplug.GearSwitcherPlugin.Commands;
 
-import com.PaistiPlugins.DontObfuscate;
+import com.theplug.DontObfuscate;
+import com.theplug.PaistiUtils.API.AttackTickTracker.AttackTickTracker;
 
 import java.security.InvalidParameterException;
 
@@ -10,7 +11,7 @@ public interface GearSwitcherCommand {
 
     String serializeToString();
 
-    static GearSwitcherCommand deserializeFromString(String serialized) {
+    static GearSwitcherCommand deserializeFromString(String serialized, AttackTickTracker attackTickTracker) {
         var prefix = serialized.contains(":") ? serialized.split(":")[0].trim() : serialized;
         switch (prefix) {
             case EquipCommand.INSTRUCTION_PREFIX:
@@ -33,6 +34,8 @@ public interface GearSwitcherCommand {
                 return UnEquipCommand.deserializeFromString(serialized);
             case DisablePrayCommand.INSTRUCTION_PREFIX:
                 return DisablePrayCommand.deserializeFromString(serialized);
+            case WaitAttackTickCommand.INSTRUCTION_PREFIX:
+                return WaitAttackTickCommand.deserializeFromString(serialized, attackTickTracker);
             default:
                 throw new InvalidParameterException("Invalid prefix: " + prefix + " in serialized string: " + serialized);
         }

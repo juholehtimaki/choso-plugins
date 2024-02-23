@@ -1,7 +1,7 @@
-package com.PaistiPlugins.GearSwitcherPlugin.Commands;
+package com.theplug.GearSwitcherPlugin.Commands;
 
-import com.PaistiPlugins.GearSwitcherPlugin.GearSwitcherPlugin;
-import com.PaistiPlugins.PaistiUtils.API.Spells.*;
+import com.theplug.GearSwitcherPlugin.GearSwitcherPlugin;
+import com.theplug.PaistiUtils.API.Spells.*;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;

@@ -1,9 +1,9 @@
-package com.PaistiPlugins.GearSwitcherPlugin.Commands;
+package com.theplug.GearSwitcherPlugin.Commands;
 
-import com.PaistiPlugins.PaistiUtils.API.Equipment;
-import com.PaistiPlugins.PaistiUtils.API.Interaction;
-import com.PaistiPlugins.PaistiUtils.API.Inventory;
-import com.PaistiPlugins.PaistiUtils.API.Utility;
+import com.theplug.PaistiUtils.API.Equipment;
+import com.theplug.PaistiUtils.API.Interaction;
+import com.theplug.PaistiUtils.API.Inventory;
+import com.theplug.PaistiUtils.API.Utility;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j

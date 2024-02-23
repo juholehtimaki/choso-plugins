@@ -1,8 +1,8 @@
-package com.PaistiPlugins.GearSwitcherPlugin.Commands;
+package com.theplug.GearSwitcherPlugin.Commands;
 
-import com.PaistiPlugins.GearSwitcherPlugin.GearSwitcherPlugin;
-import com.PaistiPlugins.PaistiUtils.API.*;
-import com.PaistiPlugins.PaistiUtils.PaistiUtils;
+import com.theplug.GearSwitcherPlugin.GearSwitcherPlugin;
+import com.theplug.PaistiUtils.API.*;
+import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;

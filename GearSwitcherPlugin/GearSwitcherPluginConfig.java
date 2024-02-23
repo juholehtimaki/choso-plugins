@@ -1,4 +1,4 @@
-package com.PaistiPlugins.GearSwitcherPlugin;
+package com.theplug.GearSwitcherPlugin;
 
 import net.runelite.client.config.*;
 

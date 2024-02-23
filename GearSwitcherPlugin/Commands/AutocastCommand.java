@@ -1,11 +1,11 @@
-package com.PaistiPlugins.GearSwitcherPlugin.Commands;
+package com.theplug.GearSwitcherPlugin.Commands;
 
-import com.PaistiPlugins.PaistiUtils.API.Spells.Spell;
-import com.PaistiPlugins.PaistiUtils.API.Spells.Standard;
-import com.PaistiPlugins.PaistiUtils.API.Utility;
-import com.PaistiPlugins.PaistiUtils.API.Widgets;
-import com.PaistiPlugins.PaistiUtils.Hooks.Hooks;
-import com.PaistiPlugins.PaistiUtils.PaistiUtils;
+import com.theplug.PaistiUtils.API.Spells.Spell;
+import com.theplug.PaistiUtils.API.Spells.Standard;
+import com.theplug.PaistiUtils.API.Utility;
+import com.theplug.PaistiUtils.API.Widgets;
+import com.theplug.PaistiUtils.Hooks.Hooks;
+import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.MenuAction;
 import net.runelite.api.Point;
@@ -68,7 +68,6 @@ public class AutocastCommand implements GearSwitcherCommand {
             toggleFireSurge();
             return true;
         });
-        System.out.println("executing autocast");
         return true;
     }
 
@@ -85,7 +84,6 @@ public class AutocastCommand implements GearSwitcherCommand {
             String spellName = serializedString.split(":")[1];
             return new AutocastCommand(spellName);
         } catch (Exception e) {
-            System.out.println("asd");
             log.error("Failed to deserialize");
             e.printStackTrace();
         }

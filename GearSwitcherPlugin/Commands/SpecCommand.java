@@ -1,6 +1,6 @@
-package com.PaistiPlugins.GearSwitcherPlugin.Commands;
+package com.theplug.GearSwitcherPlugin.Commands;
 
-import com.PaistiPlugins.PaistiUtils.API.Utility;
+import com.theplug.PaistiUtils.API.Utility;
 
 public class SpecCommand implements GearSwitcherCommand {
 
