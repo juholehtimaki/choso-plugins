@@ -6,6 +6,8 @@ import com.theplug.PaistiUtils.Framework.ThreadedScriptRunner;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
+import com.theplug.SES.PluginId;
+import com.theplug.SES.SessionGuard;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.config.ConfigManager;
@@ -16,9 +18,8 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.util.HotkeyListener;
 
-import java.util.ArrayDeque;
-import java.util.Comparator;
-import java.util.Queue;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @PluginDescriptor(name = "PAutoItemCombiner", description = "Combines specified items while bankstanding", enabledByDefault = false, tags = {"paisti", "skilling"})
@@ -30,8 +31,21 @@ public class AutoItemCombinerPlugin extends Plugin {
     @Inject
     private KeyManager keyManager;
     ThreadedScriptRunner runner = new ThreadedScriptRunner();
+    SessionGuard sessionGuard = new SessionGuard(PluginId.PAUTOITEMCOMBINER, runner);
     @Inject
     PaistiBreakHandler paistiBreakHandler;
+
+    private class WithdrawItemSetting {
+        public final String itemNameOrId;
+        public final int withdrawCount;
+
+        public WithdrawItemSetting(String itemNameOrId, int withdrawCount) {
+            this.itemNameOrId = itemNameOrId;
+            this.withdrawCount = withdrawCount;
+        }
+    }
+
+    private final List<WithdrawItemSetting> withdrawItemSettings = new ArrayList<WithdrawItemSetting>();
 
     private final HotkeyListener startHotkeyListener = new HotkeyListener(() -> config.startHotkey() != null ? config.startHotkey() : new Keybind(0, 0)) {
         @Override
@@ -83,76 +97,80 @@ public class AutoItemCombinerPlugin extends Plugin {
             Utility.sendGameMessage("Stopped", "PAutoItemCombiner");
         }
         paistiBreakHandler.stopPlugin(this);
+        withdrawItemSettings.clear();
         runner.stop();
     }
 
     public boolean enoughMaterialsInBankToProceed() {
-        var primaryIsOnlyDigits = config.primaryItemNameOrId().matches("\\d+");
-        if (primaryIsOnlyDigits) {
-            var itemId = Integer.parseInt(config.primaryItemNameOrId());
-            if (!Bank.containsQuantity(itemId, config.primaryItemWithdrawCount())) {
-                Utility.sendGameMessage("Not enough primary items left in bank", "PAutoItemCombiner");
-                return false;
-            }
-        } else {
-            if (!Bank.containsQuantity(config.primaryItemNameOrId(), config.primaryItemWithdrawCount())) {
-                Utility.sendGameMessage("Not enough primary items left in bank", "PAutoItemCombiner");
-                return false;
-            }
-        }
-        var secondaryIsOnlyDigits = config.secondaryItemNameOrId().matches("\\d+");
-        if (secondaryIsOnlyDigits) {
-            var itemId = Integer.parseInt(config.secondaryItemNameOrId());
-            if (!Bank.containsQuantity(itemId, config.secondaryItemWithdrawCount())) {
-                Utility.sendGameMessage("Not enough secondary items left in bank", "PAutoItemCombiner");
-                return false;
-            }
-        } else {
-            if (!Bank.containsQuantity(config.secondaryItemNameOrId(), config.secondaryItemWithdrawCount())) {
-                Utility.sendGameMessage("Not enough secondary items left in bank", "PAutoItemCombiner");
+        for (var withdrawItemSetting : withdrawItemSettings) {
+            if (!getHaveEnoughItemsInBank(withdrawItemSetting.itemNameOrId, withdrawItemSetting.withdrawCount - getItemQuantityInInventory(withdrawItemSetting.itemNameOrId))) {
+                Utility.sendGameMessage("Not enough " + withdrawItemSetting.itemNameOrId + " in bank.", "PAutoItemCombiner");
                 return false;
             }
         }
         return true;
     }
 
-    public boolean enoughMaterialsInInventoryToProceed() {
-        var primaryIsOnlyDigits = config.primaryItemNameOrId().matches("\\d+");
-        var enoughPrimaryItems = true;
-        if (primaryIsOnlyDigits) {
-            var itemId = Integer.parseInt(config.primaryItemNameOrId());
-            if (Inventory.getItemAmount(itemId) == 0) {
-                enoughPrimaryItems = false;
-            }
+    private int getItemQuantityInInventory(String nameOrId) {
+        var isOnlyDigits = nameOrId.matches("\\d+");
+        if (isOnlyDigits) {
+            var itemId = Integer.parseInt(nameOrId);
+            return Inventory.getItemAmount(itemId);
         } else {
-            if (Inventory.getItemAmount(config.primaryItemNameOrId()) == 0) {
-                enoughPrimaryItems = false;
-            }
+            return Inventory.getItemAmount(nameOrId);
         }
-        var secondaryIsOnlyDigits = config.secondaryItemNameOrId().matches("\\d+");
-        var enoughSecondaryItems = true;
-        if (secondaryIsOnlyDigits) {
-            var itemId = Integer.parseInt(config.secondaryItemNameOrId());
-            if (Inventory.getItemAmount(itemId) == 0) {
-                enoughSecondaryItems = false;
-            }
-        } else {
-            if (Inventory.getItemAmount(config.secondaryItemNameOrId()) == 0) {
-                enoughSecondaryItems = false;
-            }
-        }
-        return enoughPrimaryItems && enoughSecondaryItems;
     }
 
-    public void handleWithdraw(String itemNameOrId, int amount) {
+    private boolean getHaveEnoughItemsInBank(String nameOrId, int requiredAmount) {
+        var isOnlyDigits = nameOrId.matches("\\d+");
+        if (isOnlyDigits) {
+            var itemId = Integer.parseInt(nameOrId);
+            if (!Bank.containsQuantity(itemId, requiredAmount)) {
+                return false;
+            }
+        } else {
+            if (!Bank.containsQuantity(nameOrId, requiredAmount)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public boolean enoughMaterialsInInventoryToProceed() {
+        for (var withdrawItemSetting : withdrawItemSettings) {
+            if (getItemQuantityInInventory(withdrawItemSetting.itemNameOrId) <= 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public boolean handleWithdrawToQuantity(String itemNameOrId, int amount) {
         var isOnlyDigits = itemNameOrId.matches("\\d+");
+        int withdrawAmount = amount - getItemQuantityInInventory(itemNameOrId);
+
+        if (itemNameOrId.equalsIgnoreCase("thread")
+                || itemNameOrId.equalsIgnoreCase("crystal shard")
+                || itemNameOrId.toLowerCase().contains("tips")
+                || itemNameOrId.equalsIgnoreCase("arrow shaft")
+                || itemNameOrId.equalsIgnoreCase("feather")) {
+            if (isOnlyDigits) {
+                withdrawAmount = Bank.getQuantityInBank(Integer.parseInt(itemNameOrId));
+            } else {
+                withdrawAmount = Bank.getQuantityInBank(itemNameOrId);
+            }
+        }
+
+        int finalWithdrawAmount = withdrawAmount;
+        if (finalWithdrawAmount <= 0) return true;
         if (isOnlyDigits) {
             var itemId = Integer.parseInt(itemNameOrId);
-            Bank.withdraw(itemId, amount, false);
-            Utility.sleepUntilCondition(() -> Inventory.getItemAmount(itemId) == amount, 3000, 100);
+            Bank.withdraw(itemId, withdrawAmount, false);
+            return Utility.sleepUntilCondition(() -> Inventory.getItemAmount(itemId) >= amount, 3000, 100);
         } else {
-            Bank.withdraw(itemNameOrId, amount, false);
-            Utility.sleepUntilCondition(() -> Inventory.getItemAmount(itemNameOrId) == amount, 3000, 100);
+            Bank.withdraw(itemNameOrId, withdrawAmount, false);
+            return Utility.sleepUntilCondition(() -> Inventory.getItemAmount(itemNameOrId) >= amount, 3000, 100);
         }
     }
 
@@ -164,17 +182,62 @@ public class AutoItemCombinerPlugin extends Plugin {
         if (enoughMaterialsInInventoryToProceed()) return false;
         if (!Bank.isOpen()) {
             Bank.openBank();
-            Utility.sleepUntilCondition(() -> Bank.isOpen(), 10000, 100);
-        }
-        Bank.depositInventory();
-        if (!enoughMaterialsInBankToProceed()) {
-            Utility.sendGameMessage("Stopping because not enough items left in bank", "PAutoItemCombiner");
-            stop();
+            Utility.sleepUntilCondition(Bank::isOpen, 10000, 100);
         }
 
-        Utility.sleepGaussian(600, 1200);
-        handleWithdraw(config.primaryItemNameOrId(), config.primaryItemWithdrawCount());
-        handleWithdraw(config.secondaryItemNameOrId(), config.secondaryItemWithdrawCount());
+        // Deposit all except the items we list as withdraw items
+        var bankInventory = BankInventory.search().result();
+        var itemsToDeposit = Utility.runOnClientThread(() -> bankInventory.stream().filter(i -> {
+            for (var withdrawItemSetting : withdrawItemSettings) {
+                var isOnlyDigits = withdrawItemSetting.itemNameOrId.matches("\\d+");
+                if (isOnlyDigits && i.getItemId() == Integer.parseInt(withdrawItemSetting.itemNameOrId)) {
+                    return false;
+                }
+                if (!isOnlyDigits) {
+                    String cleanName = Widgets.getCleanName(i);
+                    if (cleanName != null && cleanName.toLowerCase().contains(withdrawItemSetting.itemNameOrId.toLowerCase())) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }).collect(Collectors.toList()));
+
+        boolean shouldDepositAll = bankInventory.size() == itemsToDeposit.size();
+        if (shouldDepositAll) {
+            Bank.depositInventory();
+            Utility.sleepUntilCondition(Inventory::isEmpty, 1800, 300);
+        } else {
+            HashSet<Integer> deposited = new HashSet<>();
+            for (var item : itemsToDeposit) {
+                if (deposited.contains(item.getItemId())) continue;
+                deposited.add(item.getItemId());
+                Bank.depositAll(item.getItemId());
+                Utility.sleepGaussian(200, 350);
+            }
+        }
+
+
+        if (!enoughMaterialsInBankToProceed()) {
+            Utility.sleepGaussian(600, 800); // Sleep and check again in case the bank didn't update yet
+            if (!enoughMaterialsInBankToProceed()) {
+                Utility.sendGameMessage("Stopping because not enough items left in bank", "PAutoItemCombiner");
+                stop();
+            }
+        }
+        boolean withdrawFailed = false;
+        for (var withdrawItemSetting : withdrawItemSettings) {
+            if (!handleWithdrawToQuantity(withdrawItemSetting.itemNameOrId, withdrawItemSetting.withdrawCount)) {
+                Utility.sendGameMessage("Failed to withdraw " + withdrawItemSetting.itemNameOrId, "PAutoItemCombiner");
+                withdrawFailed = true;
+                break;
+            }
+        }
+        if (withdrawFailed) {
+            stop();
+            return false;
+        }
+
 
         Bank.closeBank();
         Utility.sleepUntilCondition(() -> !Bank.isOpen(), 3000, 100);
@@ -182,15 +245,15 @@ public class AutoItemCombinerPlugin extends Plugin {
     }
 
     public Widget getFirstItemInInventory() {
-        var isOnlyDigits = config.primaryItemNameOrId().matches("\\d+");
+        var isOnlyDigits = config.firstItemNameOrId().matches("\\d+");
         if (isOnlyDigits) {
-            var itemId = Integer.parseInt(config.primaryItemNameOrId());
+            var itemId = Integer.parseInt(config.firstItemNameOrId());
             var item = Inventory.search().withId(itemId).first();
             if (item.isPresent()) {
                 return item.get();
             }
         } else {
-            var item = Inventory.search().matchesWildCardNoCase(config.primaryItemNameOrId()).first();
+            var item = Inventory.search().matchesWildCardNoCase(config.firstItemNameOrId()).first();
             if (item.isPresent()) {
                 return item.get();
             }
@@ -201,9 +264,9 @@ public class AutoItemCombinerPlugin extends Plugin {
     final Queue<Integer> lastTargetedSecondItemIndexes = new ArrayDeque<>();
 
     public Widget getSecondItemInInventory() {
-        var isOnlyDigits = config.secondaryItemNameOrId().matches("\\d+");
+        var isOnlyDigits = config.secondItemNameOrId().matches("\\d+");
         if (isOnlyDigits) {
-            var itemId = Integer.parseInt(config.secondaryItemNameOrId());
+            var itemId = Integer.parseInt(config.secondItemNameOrId());
             var item = Inventory.search()
                     .withId(itemId)
                     .result()
@@ -215,7 +278,7 @@ public class AutoItemCombinerPlugin extends Plugin {
             }
         } else {
             var item = Inventory.search()
-                    .matchesWildCardNoCase(config.secondaryItemNameOrId())
+                    .matchesWildCardNoCase(config.secondItemNameOrId())
                     .result()
                     .stream().min(Comparator.comparingInt(i -> lastTargetedSecondItemIndexes.contains(i.getIndex()) ? 1 : 0));
             if (item.isPresent()) {
@@ -237,23 +300,56 @@ public class AutoItemCombinerPlugin extends Plugin {
             stop();
         }
         Interaction.useItemOnItem(primaryItem, secondaryItem);
-        if (!config.spamCombine()) {
-            Utility.sleepUntilCondition(MakeInterface::isMakeInterfaceOpen, 1800, 100);
-            Keyboard.pressSpacebar();
-            Utility.sleepGaussian(1200, 1800);
+        if (!config.spamCombine() || (config.spamCombine() && config.spamMin() >= 6000)) {
+            Utility.sleepUntilCondition(MakeInterface::isMakeInterfaceOpen, 1800, 200);
+        }
+        if (MakeInterface.isMakeInterfaceOpen()) {
+            if (config.makeInterfaceOptionName() == null || config.makeInterfaceOptionName().isEmpty()) {
+                Keyboard.pressSpacebar();
+            } else if (!MakeInterface.selectOptionWildcard(config.makeInterfaceOptionName())) {
+                Keyboard.pressSpacebar();
+            }
+            Utility.sleepUntilCondition(() -> !MakeInterface.isMakeInterfaceOpen(), 1800, 600);
         }
         return true;
     }
 
     public boolean shouldCombine() {
         if (config.spamCombine()) return true;
-        return Utility.getIdleTicks() >= 2;
+
+        int idleTickThreshold = 3;
+        // Glassblowing animations can have long idle ticks
+        if (config.firstItemNameOrId().toLowerCase().contains("glassblowing")
+                || config.secondItemNameOrId().toLowerCase().contains("glassblowing")) {
+            idleTickThreshold = 5;
+        }
+
+        return Utility.getIdleTicks() >= idleTickThreshold;
     }
 
     private void start() {
+        if (config.firstItemNameOrId().isEmpty() || config.firstItemWithdrawCount() == 0) {
+            Utility.sendGameMessage("First item is required in config.", "PAutoItemCombiner");
+            return;
+        }
+        if (config.secondItemNameOrId().isEmpty() || config.secondItemWithdrawCount() == 0) {
+            Utility.sendGameMessage("Second item is required in config.", "PAutoItemCombiner");
+            return;
+        }
         lastTargetedSecondItemIndexes.clear();
         Utility.sendGameMessage("Started", "PAutoItemCombiner");
         paistiBreakHandler.startPlugin(this);
+        withdrawItemSettings.clear();
+        if (!config.firstItemNameOrId().isEmpty() && config.firstItemWithdrawCount() > 0) {
+            withdrawItemSettings.add(new WithdrawItemSetting(config.firstItemNameOrId(), config.firstItemWithdrawCount()));
+        }
+        if (!config.secondItemNameOrId().isEmpty() && config.secondItemWithdrawCount() > 0) {
+            withdrawItemSettings.add(new WithdrawItemSetting(config.secondItemNameOrId(), config.secondItemWithdrawCount()));
+        }
+        if (!config.extraItemNameOrId().isEmpty() && config.extraItemWithdrawCount() > 0) {
+            withdrawItemSettings.add(new WithdrawItemSetting(config.extraItemNameOrId(), config.extraItemWithdrawCount()));
+        }
+
         runner.start();
     }
 
@@ -266,7 +362,7 @@ public class AutoItemCombinerPlugin extends Plugin {
             if (!config.spamCombine()) {
                 Utility.sleepGaussian(600, 1200);
             } else {
-                Utility.sleepGaussian(config.spamMin(), config.spamMax());
+                Utility.sleepGaussian(config.spamMin(), Math.max(config.spamMax(), config.spamMin() + 20));
             }
             return;
         }
