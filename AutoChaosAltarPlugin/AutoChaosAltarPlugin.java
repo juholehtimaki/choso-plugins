@@ -172,7 +172,7 @@ public class AutoChaosAltarPlugin extends Plugin {
 
     private boolean handleBones() {
         if (!isPlayerAlive()) return false;
-        var bone = Inventory.search().nameContains("bones").onlyUnnoted().first();
+        var bone = Inventory.search().nameContains("bones").onlyUnnoted().last();
         if (bone.isEmpty()) return false;
         var altar = TileObjects.search().withName("Chaos altar").nearestToPlayer();
         if (altar.isEmpty()) return false;
@@ -237,7 +237,7 @@ public class AutoChaosAltarPlugin extends Plugin {
 
         if (reachabilityMap.isReachable(elderChaosDruid.get())) {
             Interaction.useItemOnNpc(notedBones.get(), elderChaosDruid.get());
-            Utility.sleepUntilCondition(Dialog::isConversationWindowUp, 3000, 100);
+            Utility.sleepUntilCondition(Dialog::isConversationWindowUp, 7000, 100);
             if (Dialog.isConversationWindowUp()) {
                 Dialog.handleGenericDialog(new String[]{"All"});
             }
@@ -247,6 +247,7 @@ public class AutoChaosAltarPlugin extends Plugin {
     }
 
     private boolean handleTravel() {
+        if (!loadout.isSatisfied() && !isInWilderness()) return false;
         var unnotedBones = Inventory.search().nameContains("bones").onlyUnnoted().first();
         if (unnotedBones.isEmpty()) return false;
         var altar = TileObjects.search().withName("Chaos altar").nearestToPlayer();
@@ -281,7 +282,18 @@ public class AutoChaosAltarPlugin extends Plugin {
 
     private void threadedLoop() {
         var client = PaistiUtils.getClient();
+        if (!Utility.isLoggedIn()) {
+            if (!Utility.sleepUntilCondition(Utility::isLoggedIn, 10000, 300)) {
+                log.info("Player is not logged in, stopping");
+                stop();
+                return;
+            }
+        }
         if (client.getGameState() == GameState.LOADING && !Utility.isLoggedIn()) {
+            return;
+        }
+        if (handleTargetLevelReached()) {
+            stop();
             return;
         }
         if (handleBones()) {
@@ -311,12 +323,20 @@ public class AutoChaosAltarPlugin extends Plugin {
                 paistiBreakHandler.startBreak(this);
 
                 Utility.sleepGaussian(1000, 2000);
-                Utility.sleepUntilCondition(() -> !paistiBreakHandler.isBreakActive(this) && Utility.isLoggedIn(), 99999999, 5000);
+                Utility.sleepUntilCondition(() -> !paistiBreakHandler.isBreakActive(this), 99999999, 5000);
             }
             return;
         }
 
         Utility.sleepGaussian(300, 600);
+    }
+
+    private boolean handleTargetLevelReached() {
+        if (Utility.getRealSkillLevel(Skill.PRAYER) >= config.targetLevel()) {
+            Utility.sendGameMessage("Target level reached, walking to nearest bank", "AutoChaosAltar");
+            return WebWalker.walkToNearestBank();
+        }
+        return false;
     }
 
     @Override
@@ -332,7 +352,7 @@ public class AutoChaosAltarPlugin extends Plugin {
     }
 
     private void threadedOnGameTick() {
-        if (handleHopOnPlayerNearby()) {
+        if (handleHopOnPlayerNearby() && Utility.getRealSkillLevel(Skill.PRAYER) < config.targetLevel()) {
             Utility.sendGameMessage("Hopping", "AutoChaosAltar");
             Utility.sleepGaussian(1200, 1800);
             Utility.sleepUntilCondition(Utility::isLoggedIn, 10000, 1200);

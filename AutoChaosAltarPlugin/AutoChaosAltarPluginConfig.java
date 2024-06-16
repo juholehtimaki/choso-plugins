@@ -25,4 +25,15 @@ public interface AutoChaosAltarPluginConfig extends Config {
     default String inventoryLoadout() {
         return "";
     }
+
+    @ConfigItem(
+            keyName = "targetLevel",
+            name = "Targeted prayer level",
+            description = "Level to reach before stopping",
+            position = 3
+    )
+
+    default int targetLevel() {
+        return 99;
+    }
 }
