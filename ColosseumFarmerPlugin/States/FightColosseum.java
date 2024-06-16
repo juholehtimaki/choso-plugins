@@ -3,12 +3,13 @@ package com.theplug.ColosseumFarmerPlugin.States;
 import com.theplug.ColosseumFarmerPlugin.ColosseumFarmerPlugin;
 import com.theplug.ColosseumFarmerPlugin.ColosseumFarmerPluginConfig;
 import com.theplug.PaistiUtils.API.*;
-import com.theplug.PaistiUtils.API.Loadouts.InventoryLoadout;
 import com.theplug.PaistiUtils.API.NPCTickSimulation.NPCTickSimulation;
 import com.theplug.PaistiUtils.API.Potions.BoostPotion;
 import com.theplug.PaistiUtils.API.Prayer.PPrayer;
+import com.theplug.PaistiUtils.API.Spells.Ancient;
 import com.theplug.PaistiUtils.PathFinding.LocalPathfinder;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
+import jdk.jshell.execution.Util;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
@@ -25,10 +26,6 @@ import java.util.stream.Collectors;
 public class FightColosseum implements State {
     ColosseumFarmerPlugin plugin;
     ColosseumFarmerPluginConfig config;
-    private final Object dangerousTilesLock = new Object();
-    private final Set<WorldPoint> dangerousTiles = new HashSet<>();
-    private final AtomicReference<WorldPoint> optimalTile = new AtomicReference<>(null);
-    @Getter
     private final AtomicReference<WorldPoint> centerTile = new AtomicReference<>(null);
     private final AtomicReference<Boolean> shouldMage = new AtomicReference<>(true);
     private final AtomicReference<Boolean> isFremennikTrioAlive = new AtomicReference<>(true);
@@ -65,7 +62,7 @@ public class FightColosseum implements State {
             NpcID.FREMENNIK_WARBAND_ARCHER,
             NpcID.FREMENNIK_WARBAND_SEER
     );
-    
+
 
     public FightColosseum(ColosseumFarmerPlugin plugin, ColosseumFarmerPluginConfig config) {
         super();
@@ -73,12 +70,6 @@ public class FightColosseum implements State {
         this.config = config;
         this.nextPrayerPotionAt = generateNextPrayerPotAt();
         this.nextEatAtHp = generateNextEatAtHp();
-    }
-
-    private void updateDangerousTiles() {
-        synchronized (dangerousTilesLock) {
-            dangerousTiles.clear();
-        }
     }
 
     private void setFremennikTrioAlive() {
@@ -114,45 +105,48 @@ public class FightColosseum implements State {
         return false;
     }
 
-    private void updateOptimalTile() {
-        var playerLoc = Walking.getPlayerLocation();
-        LocalPathfinder.ReachabilityMap reachabilityMap = LocalPathfinder.getReachabilityMap();
-        List<WorldPoint> tiles = new ArrayList<>();
-        var target = getTarget();
-        outerLoop:
-        for (var dx = -20; dx <= 20; dx++) {
-            for (var dy = -20; dy <= 20; dy++) {
-                var tile = playerLoc.dx(dx).dy(dy);
-                if (!reachabilityMap.isReachable(tile)) continue;;
-                if (dangerousTiles.contains(tile)) continue;
-                if (isFremennikTrioAlive.get()) {
-                    var trioNpcs = NPCs.search().withIdInArr(NpcID.FREMENNIK_WARBAND_BERSERKER, NpcID.FREMENNIK_WARBAND_SEER, NpcID.FREMENNIK_WARBAND_ARCHER).alive().result();
-                    for (var npc : trioNpcs) {
-                        if (tile.distanceTo(npc.getWorldArea()) < 3) continue outerLoop;
-                    }
+    public WorldPoint getOptimalTile() {
+        return Utility.runOnClientThread(() -> {
+            var playerLoc = Walking.getPlayerLocation();
+            LocalPathfinder.ReachabilityMap reachabilityMap = LocalPathfinder.getReachabilityMap();
+            List<WorldPoint> tiles = new ArrayList<>();
+            var target = getTarget();
+            for (var dx = -6; dx <= 6; dx++) {
+                for (var dy = -6; dy <= 6; dy++) {
+                    var tile = playerLoc.dx(dx).dy(dy);
+                    if (!reachabilityMap.isReachable(tile)) continue;
+                    tiles.add(tile);
                 }
-                if (target != null && tile.distanceTo(target.getWorldArea()) > plugin.attackTickTracker.getPlayerAttackRange()) continue;
-                tiles.add(tile);
             }
-        }
 
-        if (tiles.isEmpty()) {
-            Utility.sendGameMessage("No tiles available", "ColosseumFarmer");
-            optimalTile.set(null);
-            return;
-        }
+            if (tiles.isEmpty()) {
+                Utility.sendGameMessage("No tiles available", "ColosseumFarmer");
+                return null;
+            }
 
-        if (centerTile.get() != null) {
-            tiles.sort(Comparator.comparingInt(t -> t.distanceTo(centerTile.get())));
-        }
+            var trioNpcs = NPCs.search().withIdInArr(NpcID.FREMENNIK_WARBAND_BERSERKER, NpcID.FREMENNIK_WARBAND_SEER, NpcID.FREMENNIK_WARBAND_ARCHER).alive().result();
+            tiles.sort(Comparator.comparingDouble(t -> {
+                double cannotReachTargetCost = target != null && t.distanceTo(target.getWorldArea()) > plugin.attackTickTracker.getPlayerAttackRange() + 1 ? 100000 : 0;
 
-        tiles.sort(Comparator.comparingInt(reachabilityMap::getCostTo));
+                double noLineOfSightCost = (target != null && !t.toWorldArea().hasLineOfSightTo(PaistiUtils.getClient().getTopLevelWorldView(), target.getWorldArea())) ? 10000 : 0;
 
-        if (target != null) {
-            tiles.sort(Comparator.comparingInt(t -> t.toWorldArea().hasLineOfSightTo(PaistiUtils.getClient(), target.getWorldArea()) ? 0 : 1));
-        }
+                double closestFremennikDist = trioNpcs.stream().mapToDouble(n -> Geometry.distanceToHypotenuse(t, n.getWorldLocation())).min().orElse(15);
+                double fremennikProximityCost = Math.max(0, (2.5 - closestFremennikDist)) * (1500.0 / 2.5);
 
-        optimalTile.set(tiles.get(0));
+                double distanceFromPlayerCost = Math.floor((double) reachabilityMap.getCostTo(t) / (Walking.isRunEnabled() ? 2.0 : 1.0)) * 500.0;
+                double isNotPlayerTileCost = !t.equals(Walking.getPlayerLocation()) ? 10 : 0;
+                //double distanceFromCenterCost = (centerTile.get() != null ? Math.max((double) t.distanceTo(centerTile.get()) - 8.0, 0) : 0) * 10.0;
+
+                return cannotReachTargetCost
+                        + fremennikProximityCost
+                        + distanceFromPlayerCost
+                        //+ distanceFromCenterCost
+                        + noLineOfSightCost
+                        + isNotPlayerTileCost;
+            }));
+
+            return tiles.get(0);
+        });
     }
 
 
@@ -269,14 +263,13 @@ public class FightColosseum implements State {
     private void setOffensivePrayers() {
         if (Utility.getInteractionTarget() instanceof NPC && getTarget() != null) {
             var npc = (NPC) Utility.getInteractionTarget();
-            if (!npc.isDead() && plugin.attackTickTracker.getTicksUntilNextAttack() <= 1){
+            if (!npc.isDead() && plugin.attackTickTracker.getTicksUntilNextAttack() <= 1) {
                 var target = getTarget();
                 if (target.getId() == NpcID.FREMENNIK_WARBAND_BERSERKER) {
-                    enableOffensiveMagePray(true);
+                    enableOffensiveMagePray(false);
                     return;
-                }
-                else {
-                    enableOffensiveRangePray(true);
+                } else {
+                    enableOffensiveRangePray(false);
                     return;
                 }
             }
@@ -285,12 +278,12 @@ public class FightColosseum implements State {
     }
 
     private void setOffensivePrayersManual() {
+        log.debug("Manual offensive prayer");
         var target = getTarget();
-        if (target.getId() == NpcID.FREMENNIK_WARBAND_BERSERKER) {
-            enableOffensiveMagePray(true);
-        }
-        else {
-            enableOffensiveRangePray(true);
+        if (target.getId() == NpcID.FREMENNIK_WARBAND_BERSERKER && Equipment.search().nameContains("blowpipe").empty()) {
+            enableOffensiveMagePray(false);
+        } else {
+            enableOffensiveRangePray(false);
         }
         clickedAttackOnTick.set(Utility.getTickCount());
     }
@@ -379,26 +372,33 @@ public class FightColosseum implements State {
         if (target == null) return false;
         if (Utility.getInteractionTarget() == target) return false;
         boolean attackReady = plugin.attackTickTracker.getTicksUntilNextAttack() <= 1;
-        if (isFremennikTrioAlive.get()) {
-            if (!attackReady) return false;
+        if (!attackReady) return false;
+
+        if (target.getId() == NpcID.FREMENNIK_WARBAND_BERSERKER) {
+            if (Ancient.ICE_BARRAGE.canCast()) {
+                return Ancient.ICE_BARRAGE.castOnNpc(target);
+            }
+            if (Ancient.ICE_BURST.canCast()) {
+                return Ancient.ICE_BURST.castOnNpc(target);
+            }
         }
+
         if (Interaction.clickNpc(target, "Attack")) {
-            if (attackReady && Walking.getPlayerLocation().distanceTo(target.getWorldArea()) <= plugin.attackTickTracker.getPlayerAttackRange()) {
+            if (attackReady && Walking.getPlayerLocation().distanceTo(target.getWorldArea()) <= plugin.attackTickTracker.getPlayerAttackRange() + 1) {
                 setOffensivePrayersManual();
             }
-            return Utility.sleepUntilCondition(() -> Utility.getInteractionTarget() == target, 1200, 50);
+            return Utility.sleepUntilCondition(() -> Utility.getInteractionTarget() == target, 600, 50);
         }
         return true;
     }
 
-    private boolean handleGearSwitch(){
+    private boolean handleGearSwitch() {
         var target = getTarget();
         if (target == null || target.getId() == NpcID.FREMENNIK_WARBAND_BERSERKER) {
             if (!plugin.getMageGear().isSatisfied(true)) {
                 return plugin.getMageGear().handleSwitchTurbo();
             }
-        }
-        else if (!plugin.getRangeGear().isSatisfied(true)) {
+        } else if (!plugin.getRangeGear().isSatisfied(true)) {
             return plugin.getRangeGear().handleSwitchTurbo();
         }
         return false;
@@ -406,7 +406,7 @@ public class FightColosseum implements State {
 
     private boolean handleMoving() {
         if (!isFremennikTrioAlive.get()) return false;
-        var opTile = optimalTile.get();
+        var opTile = getOptimalTile();
         if (opTile == null) return false;
         var playerLoc = Walking.getPlayerLocation();
         if (playerLoc.equals(opTile)) return false;
@@ -431,6 +431,17 @@ public class FightColosseum implements State {
         return false;
     }
 
+    private boolean handleRunning() {
+        if (isFremennikTrioAlive.get()) {
+            if (Walking.isRunEnabled()) {
+                return Walking.setRun(false);
+            }
+        } else if (!isFremennikTrioAlive.get() && !Walking.isRunEnabled()) {
+            return Walking.setRun(true);
+        }
+        return false;
+    }
+
     @Override
     public String name() {
         return "Fight";
@@ -438,7 +449,7 @@ public class FightColosseum implements State {
 
     @Override
     public boolean shouldExecuteState() {
-        return plugin.insideColosseum() && !plugin.isMinimusPresent();
+        return plugin.insideColosseum() && !plugin.isMinimusPresent() && Utility.getBoostedSkillLevel(Skill.HITPOINTS) > 0;
     }
 
     @Override
@@ -476,9 +487,9 @@ public class FightColosseum implements State {
 
     @Subscribe
     private void onGameTick(GameTick e) {
-        updateDangerousTiles();
+        if (!shouldExecuteState()) return;
         setFremennikTrioAlive();
-        updateOptimalTile();
+        //updateOptimalTile();
         updateCenterTile();
     }
 

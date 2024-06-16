@@ -14,10 +14,21 @@ public interface ColosseumFarmerPluginConfig extends Config {
         return "";
     }
 
+    @ConfigItem(
+            keyName = "deathWalking",
+            name = "Death walking",
+            description = "Attempt to loot items and continue upon death. Auto-equip worn items from gravestone must be on",
+            position = 1
+    )
+    default boolean deathWalking() {
+        return false;
+    }
+
+
     @ConfigSection(
             name = "Banking settings",
             description = "Banking settings",
-            position = 1,
+            position = 2,
             closedByDefault = false
     )
     String bankingSettings = "bankingSettings";
@@ -70,10 +81,11 @@ public interface ColosseumFarmerPluginConfig extends Config {
     @ConfigSection(
             name = "Mage settings",
             description = "Mage settings",
-            position = 2,
+            position = 3,
             closedByDefault = true
     )
     String mageSettings = "mageSettings";
+
     @ConfigItem(
             keyName = "mageGear",
             name = "Mage gear",
@@ -88,10 +100,11 @@ public interface ColosseumFarmerPluginConfig extends Config {
     @ConfigSection(
             name = "Range settings",
             description = "Range settings",
-            position = 3,
+            position = 4,
             closedByDefault = true
     )
     String rangeSettings = "rangeSettings";
+
     @ConfigItem(
             keyName = "rangeGear",
             name = "Range gear",
@@ -102,6 +115,7 @@ public interface ColosseumFarmerPluginConfig extends Config {
     default String rangeGear() {
         return "";
     }
+
     @ConfigItem(
             keyName = "useSpecialAttack",
             name = "Use special attack",
@@ -127,6 +141,7 @@ public interface ColosseumFarmerPluginConfig extends Config {
     default int specEnergyMinimum() {
         return 100;
     }
+
     @ConfigItem(
             keyName = "startHotkey",
             name = "Start hotkey",

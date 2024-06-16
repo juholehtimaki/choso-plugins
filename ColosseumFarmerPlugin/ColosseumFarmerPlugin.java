@@ -33,6 +33,7 @@ import net.runelite.client.util.HotkeyListener;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 
 @Slf4j
@@ -90,6 +91,7 @@ public class ColosseumFarmerPlugin extends Plugin {
     private InventoryLoadout.InventoryLoadoutSetup rangeGear = null;
     @Getter
     private InventoryLoadout.InventoryLoadoutSetup mageGear = null;
+    public final AtomicReference<Integer> playerDiedOnTick = new AtomicReference<>(-1);
 
     @Provides
     public ColosseumFarmerPluginConfig getConfig(ConfigManager configManager) {
@@ -150,13 +152,20 @@ public class ColosseumFarmerPlugin extends Plugin {
     }
 
     private void threadedLoop() {
+        if (!Utility.isLoggedIn()) {
+            if (!Utility.sleepUntilCondition(Utility::isLoggedIn, 10000, 300)) {
+                log.info("Player is not logged in, stopping");
+                stop();
+                return;
+            }
+        }
         for (var state : states) {
             if (state.shouldExecuteState()) {
                 state.threadedLoop();
                 return;
             }
         }
-        Utility.sleepGaussian(100, 200);
+        Utility.sleepGaussian(20, 60);
     }
 
     @Override
@@ -221,7 +230,8 @@ public class ColosseumFarmerPlugin extends Plugin {
             Player player = (Player) actor;
             if (player == PaistiUtils.getClient().getLocalPlayer()) {
                 Utility.sendGameMessage("Player has died!", "ColosseumFarmer");
-                stop();
+                if (!config.deathWalking()) stop();
+                playerDiedOnTick.set(Utility.getTickCount());
             }
         }
     }

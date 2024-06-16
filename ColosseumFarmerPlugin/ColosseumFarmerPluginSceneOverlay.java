@@ -36,10 +36,14 @@ public class ColosseumFarmerPluginSceneOverlay extends Overlay {
     public Dimension render(Graphics2D graphics) {
         if (!plugin.isRunning()) return null;
 
-        var centerTile = plugin.fightColosseum.getCenterTile().get();
+
+        /*
+        var centerTile = plugin.fightColosseum.getOptimalTile();
         if (centerTile != null) {
-            drawTile(graphics, centerTile, Color.RED, 50, "C", new BasicStroke(1));
+            drawTile(graphics, centerTile, Color.CYAN, 50, "O", new BasicStroke(1));
         }
+
+         */
 
         return null;
     }

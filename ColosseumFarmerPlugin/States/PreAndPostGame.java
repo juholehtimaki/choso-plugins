@@ -2,21 +2,29 @@ package com.theplug.ColosseumFarmerPlugin.States;
 
 import com.theplug.ColosseumFarmerPlugin.ColosseumFarmerPlugin;
 import com.theplug.ColosseumFarmerPlugin.ColosseumFarmerPluginConfig;
+import com.theplug.DontObfuscate;
 import com.theplug.PaistiUtils.API.*;
+import com.theplug.PaistiUtils.API.Potions.BoostPotion;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
+import net.runelite.api.Skill;
 import net.runelite.api.TileObject;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.client.eventbus.Subscribe;
 
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 public class PreAndPostGame implements State {
-    static ColosseumFarmerPlugin plugin;
+    ColosseumFarmerPlugin plugin;
     ColosseumFarmerPluginConfig config;
 
     private final AtomicReference<Boolean> alreadyLootedChestThisRun = new AtomicReference<>(false);
+
+    private static final AtomicReference<Integer> lastDrankOnTick = new AtomicReference<>(-1);
+    private static final AtomicReference<Integer> lastAteOnTick = new AtomicReference<>(-1);
+
 
     public PreAndPostGame(ColosseumFarmerPlugin plugin, ColosseumFarmerPluginConfig config) {
         this.plugin = plugin;
@@ -38,13 +46,14 @@ public class PreAndPostGame implements State {
 
     }
 
+    @DontObfuscate
     enum WidgetType {
         PRE_GAME,
         POST_GAME,
         UNKNOWN
     }
 
-    private final String ALREADY_LOOTED_MESSAGE = "chest appears to be empty";
+    private static final String ALREADY_LOOTED_MESSAGE = "chest appears to be empty";
 
     private boolean isModifierWidgetVisible() {
         return Boolean.TRUE.equals(Utility.runOnClientThread(() -> {
@@ -110,7 +119,7 @@ public class PreAndPostGame implements State {
         }));
     }
 
-    private boolean handleConfirmWidget(){
+    private boolean handleConfirmWidget() {
         return Boolean.TRUE.equals(Utility.runOnClientThread(() -> {
             var confirmWidget = Widgets.search().withAction("Confirm").first();
             if (confirmWidget.isPresent()) {
@@ -149,8 +158,7 @@ public class PreAndPostGame implements State {
 
         if (widgetType == WidgetType.POST_GAME) {
             return handleClaimLootWidget();
-        }
-        else if (widgetType == WidgetType.PRE_GAME) {
+        } else if (widgetType == WidgetType.PRE_GAME) {
             return handleSetModifierWidget();
         } else {
             return false;
@@ -169,6 +177,30 @@ public class PreAndPostGame implements State {
         }));
     }
 
+    private boolean canDrinkThisTick() {
+        int currTick = Utility.getTickCount();
+        if (currTick - lastDrankOnTick.get() < 3) return false;
+        if (currTick - lastAteOnTick.get() < 3 && lastAteOnTick.get() != 0) return false;
+        return true;
+    }
+
+    private boolean handlePrepotting() {
+        if (!canDrinkThisTick()) return false;
+        if (!Utility.isIdle()) return false;
+        if (Utility.getBoostedSkillLevel(Skill.RANGED) < Utility.getRealSkillLevel(Skill.RANGED) + 5) {
+            var potionToDrink = Utility.runOnClientThread(() -> Arrays.stream(BoostPotion.values()).filter(potion -> potion.findBoost(Skill.RANGED) != null).findFirst());
+
+            if (potionToDrink == null || potionToDrink.isEmpty()) return false;
+
+            if (potionToDrink.get().drink()) {
+                lastDrankOnTick.set(Utility.getTickCount());
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private boolean chestContainsSplinters() {
         return Boolean.TRUE.equals(Utility.runOnClientThread(() -> {
             var splintersWidget = Widgets.search().withAction("Take").first();
@@ -179,14 +211,14 @@ public class PreAndPostGame implements State {
 
     private boolean handleLootingSplinters() {
         if (chestContainsSplinters()) {
-             Utility.runOnClientThread(() -> {
+            Utility.runOnClientThread(() -> {
                 var takeAllOptionWidget = Widgets.search().withAction("Bank-all").first();
                 if (takeAllOptionWidget.isPresent() && Widgets.isValidAndVisible(takeAllOptionWidget.get())) {
                     Interaction.clickWidget(takeAllOptionWidget.get(), "Bank-all");
                 }
                 return null;
             });
-             return Utility.sleepUntilCondition(() -> !chestContainsSplinters(), 3000, 100);
+            return Utility.sleepUntilCondition(() -> !chestContainsSplinters(), 3000, 100);
         }
         return true;
     }
@@ -222,6 +254,10 @@ public class PreAndPostGame implements State {
 
     @Override
     public void threadedLoop() {
+        if (handlePrepotting()) {
+            Utility.sleepGaussian(100, 200);
+            return;
+        }
         if (handleWaveOptions()) {
             Utility.sleepGaussian(1200, 1800);
             return;
