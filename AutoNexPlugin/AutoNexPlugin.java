@@ -40,7 +40,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
-@PluginDescriptor(name = "AutoNex", description = "Automates Nex", enabledByDefault = false, tags = {"paisti", "nex"})
+@PluginDescriptor(name = "<HTML><FONT COLOR=#1BB532>AutoNex</FONT></HTML>", description = "Automates Nex", enabledByDefault = false, tags = {"paisti", "choso", "nex"})
 public class AutoNexPlugin extends Plugin {
     @Inject
     AutoNexPluginConfig config;
@@ -164,6 +164,13 @@ public class AutoNexPlugin extends Plugin {
     }
 
     private void threadedLoop() {
+        if (!Utility.isLoggedIn()) {
+            if (!Utility.sleepUntilCondition(Utility::isLoggedIn, 10000, 300)) {
+                log.info("Player is not logged in, stopping");
+                stop();
+                return;
+            }
+        }
         try {
             for (var state : states) {
                 if (state.shouldExecuteState()) {
@@ -278,13 +285,7 @@ public class AutoNexPlugin extends Plugin {
 
     @Subscribe
     private void onChatMessage(ChatMessage event) {
-        //if (event.getType() != ChatMessageType.GAMEMESSAGE) return;
-
-        if (config.killSwitch() && event.getType() == ChatMessageType.PUBLICCHAT && event.getMessage().toLowerCase().contains(config.killSwitchCommand().toLowerCase())) {
-            setStopHasBeenRequested(true);
-            Utility.sendGameMessage("Kill switch command received, stopping when banking next time", "AutoNex");
-        }
-
+        if (event.getType() != ChatMessageType.GAMEMESSAGE) return;
         if (event.getType() == ChatMessageType.GAMEMESSAGE && event.getMessage().toLowerCase().contains(LOG_OUT_MESSAGE.toLowerCase())) {
             setStopHasBeenRequested(true);
             Utility.sendGameMessage("Log out message received, stopping on next restock", "AutoNex");

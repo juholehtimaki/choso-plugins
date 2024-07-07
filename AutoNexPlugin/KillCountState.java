@@ -104,8 +104,8 @@ public class KillCountState implements State {
         if (plugin.getAncientKc() >= 40) return false;
         boolean isLowPrayer = Utility.getBoostedSkillLevel(Skill.PRAYER) < 20;
         if (isLowPrayer) {
-            var restorePotions = Inventory.search().matchesWildCardNoCase("Super restore*");
-            var prayerPotions = Inventory.search().matchesWildCardNoCase("Prayer potion*");
+            var restorePotions = Inventory.search().matchesWildcard("Super restore*");
+            var prayerPotions = Inventory.search().matchesWildcard("Prayer potion*");
             if (restorePotions.empty() && prayerPotions.empty()) {
                 Utility.sendGameMessage("Attempting to exit kc room due to low prayer and no prayer pots left");
                 var door = TileObjects.search().withId(EXIT_DOOR).withAction("Open").nearestToPlayer();

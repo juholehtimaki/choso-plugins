@@ -86,6 +86,8 @@ public class FightNexState implements State {
     static final String CRUOR = "Cruor";
     static final String GLACIES = "Glacies";
 
+    private AtomicReference<List<String>> minionsWeShouldCareAbout = new AtomicReference<>(null);
+
     @Getter
     private AtomicReference<Integer> MINIMUM_DISTANCE_TO_NEX = new AtomicReference<>(1);
 
@@ -110,6 +112,9 @@ public class FightNexState implements State {
     private final AtomicReference<Boolean> deathChargeCasted = new AtomicReference<>(false);
     private final AtomicReference<Integer> nextDeathChargeHp = new AtomicReference<>(200);
     private final AtomicReference<Integer> nextThrallOnTick = new AtomicReference<>(-1);
+    @Getter
+    private final AtomicReference<Integer> randomRange = new AtomicReference<>(1);
+    private final AtomicReference<Integer> calculateRandomTickAgainOnTick = new AtomicReference<>(-1);
 
     public FightNexState(AutoNexPlugin plugin) {
         super();
@@ -118,6 +123,8 @@ public class FightNexState implements State {
         this.nextPrayerPotionAt = generateNextPrayerPotAt();
         this.nextStaminaAt = generateNextStatimeAt();
         this.nextRandomWait.set(generateNextRandomWait());
+        this.updateRandomMinionPredictionSkips();
+        randomRange.set(plugin.attackTickTracker.getPlayerAttackRange());
     }
 
     private int nextEatAtHp;
@@ -149,6 +156,28 @@ public class FightNexState implements State {
 
     public int generateNextPrayerPotAt() {
         return Utility.random(30, 40);
+    }
+
+    public void updateRandomMinionPredictionSkips() {
+        Random random = new Random();
+        double randVal = random.nextDouble();
+        List<String> minions = new ArrayList<>(List.of("Fumus", "Umbra", "Cruor", "Glacies"));
+
+        if (randVal < 0.50) {
+            // 50% of the time: keep all items
+            minionsWeShouldCareAbout.set(minions);
+        } else if (randVal < 0.75) {
+            // 25% of the time: drop one item
+            Collections.shuffle(minions);
+            minions.remove(0);
+            minionsWeShouldCareAbout.set(minions);
+        } else {
+            // 25% of the time: drop two items
+            Collections.shuffle(minions);
+            minions.remove(0);
+            minions.remove(0);
+            minionsWeShouldCareAbout.set(minions);
+        }
     }
 
     public int generateNextStatimeAt() {
@@ -188,7 +217,7 @@ public class FightNexState implements State {
         } else if (plugin.config.waitSpot() == WaitSpot.MIDDLE_OPTIMAL) {
             return altar.get().getWorldLocation().dx(-15).dy(9);
         } else if (plugin.config.waitSpot() == WaitSpot.MIDDLE_RANDOM) {
-            return altar.get().getWorldLocation().dx(-15).dy(9).dx(Utility.random(-1, 1)).dy(Utility.random(-1, 0));
+            return altar.get().getWorldLocation().dx(-15).dy(9).dx(Utility.random(-1, 1)).dy(Utility.random(-2, -1));
         }
 
         return null;
@@ -283,11 +312,24 @@ public class FightNexState implements State {
             return null;
         }
 
+        var attackRange = plugin.config.randomizeRange() ? randomRange.get() : plugin.attackTickTracker.getPlayerAttackRange();
+
         var minionWeShouldCareAbout = getDesiredMinion();
+        // Always skip fumus prediction if middle random
+        if (minionWeShouldCareAbout != null && plugin.config.waitSpot() == WaitSpot.MIDDLE_RANDOM) {
+            if (Objects.equals(minionWeShouldCareAbout.getName(), "Fumus")) {
+                minionWeShouldCareAbout = null;
+            }
+        } else if (minionWeShouldCareAbout != null && plugin.config.randomMinionSkip()) {
+            if (!minionsWeShouldCareAbout.get().contains(minionWeShouldCareAbout.getName())) {
+                minionWeShouldCareAbout = null;
+            }
+        }
+
         // No more minions left, no calculations to do
         if (minionWeShouldCareAbout == null) {
             var tilesWithinRangeOfNex = tiles.stream().filter(
-                    t -> t.distanceTo(nexWorldArea) <= plugin.attackTickTracker.getPlayerAttackRange()
+                    t -> t.distanceTo(nexWorldArea) <= attackRange
             ).collect(Collectors.toList());
             if (tilesWithinRangeOfNex.size() > 0) return tilesWithinRangeOfNex.get(0);
             return null;
@@ -297,17 +339,17 @@ public class FightNexState implements State {
             WorldArea secondaryTargetWorldArea = primaryTarget.equals(nex) ? minionWeShouldCareAbout.getWorldArea() : nex.getWorldArea();
             // Try to find tile within the range of nex and next minion
             var sortedTiles = tiles.stream().filter(
-                            t -> t.distanceTo(primaryTargetWorldArea) <= plugin.attackTickTracker.getPlayerAttackRange()
-                    ).sorted(Comparator.comparingInt(t -> Math.max(t.distanceTo(secondaryTargetWorldArea), plugin.attackTickTracker.getPlayerAttackRange())))
-                    .sorted(Comparator.comparingInt(t -> t.toWorldArea().hasLineOfSightTo(PaistiUtils.getClient(), secondaryTargetWorldArea) ? 0 : 1))
-                    .sorted(Comparator.comparingInt(t -> t.toWorldArea().hasLineOfSightTo(PaistiUtils.getClient(), primaryTargetWorldArea) ? 0 : 1))
+                            t -> t.distanceTo(primaryTargetWorldArea) <= attackRange
+                    ).sorted(Comparator.comparingInt(t -> Math.max(t.distanceTo(secondaryTargetWorldArea), attackRange)))
+                    .sorted(Comparator.comparingInt(t -> t.toWorldArea().hasLineOfSightTo(PaistiUtils.getClient().getTopLevelWorldView(), secondaryTargetWorldArea) ? 0 : 1))
+                    .sorted(Comparator.comparingInt(t -> t.toWorldArea().hasLineOfSightTo(PaistiUtils.getClient().getTopLevelWorldView(), primaryTargetWorldArea) ? 0 : 1))
                     .collect(Collectors.toList());
             if (!sortedTiles.isEmpty()) {
                 return sortedTiles.get(0);
             }
             // If no available tile within range of targets, return a safe tile
             var tilesWithinRangeOfNex = tiles.stream().filter(
-                    t -> t.distanceTo(nexWorldArea) <= plugin.attackTickTracker.getPlayerAttackRange()
+                    t -> t.distanceTo(nexWorldArea) <= attackRange
             ).collect(Collectors.toList());
             if (!tilesWithinRangeOfNex.isEmpty()) {
                 currMinion.set(null);
@@ -315,114 +357,6 @@ public class FightNexState implements State {
             }
             return null;
         }
-    }
-
-    public WorldPoint getOptimalTileExperimentalMinion() {
-        if (!isNexPresent()) return null;
-        var nexWorldArea = getNex().getWorldArea();
-        var playerLoc = Walking.getPlayerLocation();
-        LocalPathfinder.ReachabilityMap reachabilityMap = LocalPathfinder.getReachabilityMap();
-        List<WorldPoint> tiles = new ArrayList<>();
-        for (var dx = -35; dx <= 35; dx++) {
-            for (var dy = -35; dy <= 35; dy++) {
-                var tile = playerLoc.dx(dx).dy(dy);
-                if (dangerousTiles.contains(tile)) continue;
-                if (!reachabilityMap.isReachable(tile)) continue;
-                if (nexWorldArea.distanceTo(tile) < 1) continue;
-                tiles.add(tile);
-            }
-        }
-
-        if (plugin.config.shouldRandomizeOptimalTile() && isNexPresentAndAttackable()) {
-            Collections.shuffle(tiles);
-
-            var closestTileCost = tiles.stream().mapToInt(reachabilityMap::getCostTo).min().orElse(0);
-            tiles.sort(Comparator.comparingInt(t -> Math.max(closestTileCost + 1, reachabilityMap.getCostTo(t))));
-        } else {
-            tiles.sort(Comparator.comparingInt(reachabilityMap::getCostTo));
-        }
-
-        if (tiles.isEmpty()) {
-            Utility.sendGameMessage("No optimal tiles available", "AutoNex");
-            return null;
-        }
-
-        var minionToKill = getDesiredMinion();
-        if (minionToKill == null) {
-            return null;
-        }
-        var minionWorldArea = minionToKill.getWorldArea();
-
-        var tilesWithinRangeOfMinion = tiles.stream().filter(
-                t -> t.distanceTo(minionWorldArea) <= plugin.attackTickTracker.getPlayerAttackRange() && t.toWorldArea().hasLineOfSightTo(PaistiUtils.getClient(), minionWorldArea)
-        ).sorted(Comparator.comparingInt(t -> {
-            var dist = -t.distanceTo(nexWorldArea);
-            if (currMinion.get() == Minion.FUMUS && dist < -5) {
-                return -5;
-            }
-            if (dist < -10) return -10;
-            return dist;
-        })).collect(Collectors.toList());
-
-        if (tilesWithinRangeOfMinion.isEmpty()) {
-            Utility.sendGameMessage("Something went wrong when attempting to find suitable tile for force killing minion", "AutoNex");
-            return null;
-        }
-
-        return tilesWithinRangeOfMinion.get(0);
-    }
-
-    public WorldPoint getOptimalTileExperimentalBloodReaver() {
-        if (!isNexPresent()) return null;
-        var nexWorldArea = getNex().getWorldArea();
-        var playerLoc = Walking.getPlayerLocation();
-        LocalPathfinder.ReachabilityMap reachabilityMap = LocalPathfinder.getReachabilityMap();
-        List<WorldPoint> tiles = new ArrayList<>();
-        for (var dx = -35; dx <= 35; dx++) {
-            for (var dy = -35; dy <= 35; dy++) {
-                var tile = playerLoc.dx(dx).dy(dy);
-                if (dangerousTiles.contains(tile)) continue;
-                if (!reachabilityMap.isReachable(tile)) continue;
-                if (nexWorldArea.distanceTo(tile) < MINIMUM_DISTANCE_TO_NEX.get()) continue;
-                tiles.add(tile);
-            }
-        }
-
-        if (plugin.config.experimentalReavers()) {
-            tiles.sort(Comparator.comparingInt(reachabilityMap::getCostTo));
-        } else {
-            if (plugin.config.shouldRandomizeOptimalTile() && isNexPresentAndAttackable()) {
-                Collections.shuffle(tiles);
-
-                var closestTileCost = tiles.stream().mapToInt(reachabilityMap::getCostTo).min().orElse(0);
-                tiles.sort(Comparator.comparingInt(t -> Math.max(closestTileCost + 1, reachabilityMap.getCostTo(t))));
-            } else {
-                tiles.sort(Comparator.comparingInt(reachabilityMap::getCostTo));
-            }
-        }
-
-        if (tiles.isEmpty()) {
-            Utility.sendGameMessage("No optimal tiles available", "AutoNex");
-            return null;
-        }
-
-        var bloodReaver = NPCs.search().withName("Blood Reaver").alive().nearestToPlayerTrueDistance();
-
-        if (bloodReaver.isEmpty()) {
-            return null;
-        }
-        var bloodReaverWorldArea = bloodReaver.get().getWorldArea();
-
-        var tilesWithinRangeOfBloodReaver = tiles.stream().filter(
-                t -> t.distanceTo(bloodReaverWorldArea) <= plugin.attackTickTracker.getPlayerAttackRange() && t.toWorldArea().hasLineOfSightTo(PaistiUtils.getClient(), bloodReaverWorldArea)
-        ).sorted(Comparator.comparingInt(t -> t.distanceTo(nexWorldArea))).collect(Collectors.toList());
-
-        if (tilesWithinRangeOfBloodReaver.isEmpty()) {
-            Utility.sendGameMessage("Something went wrong when attempting to find suitable tile for force killing blood reaver", "AutoNex");
-            return null;
-        }
-
-        return tilesWithinRangeOfBloodReaver.get(0);
     }
 
     @Override
@@ -435,21 +369,25 @@ public class FightNexState implements State {
 
     }
 
+    private void updateRandomRange() {
+        if (!plugin.config.randomizeRange()) return;
+        if (currPhase.get() == null || currPhase.get() == NexPhase.SHADOW_PHASE || currPhase.get() == NexPhase.SHADOW_PHASE) {
+            randomRange.set(plugin.attackTickTracker.getPlayerAttackRange());
+            return;
+        }
+        if (Utility.getTickCount() < calculateRandomTickAgainOnTick.get()) return;
+        randomRange.set(plugin.attackTickTracker.getPlayerAttackRange() - Utility.random(0, 2));
+        calculateRandomTickAgainOnTick.set(Utility.getTickCount() + Utility.random(60, 100));
+    }
+
+
     @Subscribe(priority = 5)
     public void onGameTick(GameTick e) {
         if (!shouldExecuteState()) return;
-
         try {
-            if (plugin.config.forceKillMinion() && (currMinion.get() == Minion.FUMUS || currMinion.get() == Minion.UMBRA)) {
-                optimalTile.set(getOptimalTileExperimentalMinion());
-            } else if (plugin.config.killBloodReavers() && NPCs.search().withName("Blood Reaver").alive().first().isPresent()) {
-                optimalTile.set(getOptimalTileExperimentalBloodReaver());
-            } else {
-                optimalTile.set(getOptimalTileSafe());
-            }
-
+            updateRandomRange();
             watchNexHp();
-
+            optimalTile.set(getOptimalTileSafe());
             var relevantNpcs = NPCs.search().withinDistance(32).result();
             var _tickSimulation = new NPCTickSimulation(PaistiUtils.getClient(), plugin.attackTickTracker, relevantNpcs);
             var target = currMinion.get() == null ? getNex() : getDesiredMinion();
@@ -463,9 +401,7 @@ public class FightNexState implements State {
 
 
             if (dangerousTiles.stream().anyMatch(t -> t.equals(newPlayerLocation) || (getNex() != null && newPlayerLocation.distanceTo(getNex().getWorldArea()) < MINIMUM_DISTANCE_TO_NEX.get()))) {
-                if (!plugin.config.forceKillMinion()) {
-                    canAttackSafelyThisTick.set(false);
-                }
+                canAttackSafelyThisTick.set(false);
             }
         } catch (Exception err) {
             if (err instanceof InterruptedException) throw err;
@@ -514,7 +450,7 @@ public class FightNexState implements State {
         if (plugin.config.useRemedy()) {
             var remedyVal = Utility.getVarbitValue(Varbits.MENAPHITE_REMEDY);
             if (remedyVal > 0) return false;
-            var remedyPotions = Inventory.search().matchesWildCardNoCase("Menaphite remedy*").result();
+            var remedyPotions = Inventory.search().matchesWildcard("Menaphite remedy*").result();
             if (!remedyPotions.isEmpty()) return false;
         }
         if (Utility.getTickCount() - lastAteOnTick.get() < 3) return false;
@@ -605,21 +541,6 @@ public class FightNexState implements State {
             return cachedDesiredTarget;
         }
 
-        if (plugin.config.killBloodReavers()) {
-            var playerLoc = Walking.getPlayerLocation();
-            var bloodReavers = NPCs.search()
-                    .withName("Blood Reaver")
-                    .alive()
-                    .filter(npc -> npc.getWorldArea().distanceTo(playerLoc) <= plugin.attackTickTracker.getPlayerAttackRange())
-                    .result();
-            if (!bloodReavers.isEmpty()) {
-                bloodReavers.sort(Comparator.comparingInt(t -> t.getWorldArea().distanceTo(playerLoc)));
-                cachedDesiredTargetTick = Utility.getTickCount();
-                cachedDesiredTarget = bloodReavers.get(0);
-                return cachedDesiredTarget;
-            }
-        }
-
         var desiredMinion = currMinion.get();
         if (desiredMinion != null) {
             var minion = NPCs.search().withName(desiredMinion.toString()).alive().first();
@@ -670,10 +591,6 @@ public class FightNexState implements State {
             return false;
         }
 
-        if (plugin.config.playSafelyShadowPhase() && currMinion.get() == Minion.UMBRA && getNexDistance() < 3) {
-            return false;
-        }
-
         var desiredTarget = getDesiredTarget();
 
         if (desiredTarget == null) {
@@ -686,10 +603,9 @@ public class FightNexState implements State {
             return false;
         }
 
-        if (!plugin.config.allowDrag()) {
-            if (desiredTarget.getWorldArea().distanceTo(Walking.getPlayerLocation()) > plugin.attackTickTracker.getPlayerAttackRange()) {
-                return false;
-            }
+        var attackRange = plugin.config.randomizeRange() ? randomRange.get() : plugin.attackTickTracker.getPlayerAttackRange();
+        if (desiredTarget.getWorldArea().distanceTo(Walking.getPlayerLocation()) > attackRange) {
+            return false;
         }
 
         boolean attackReady = plugin.attackTickTracker.getTicksUntilNextAttack() <= 1;
@@ -710,7 +626,6 @@ public class FightNexState implements State {
         if (!canAttackSafelyThisTick.get()) return false;
 
         if (Interaction.clickNpc(desiredTarget, "Attack")) {
-            //Utility.sendGameMessage("Attempting to attack: " + desiredTarget.getName(), "AutoNex");
             return Utility.sleepUntilCondition(() -> Utility.getInteractionTarget() == desiredTarget, 1800, 50);
         }
 
@@ -724,7 +639,7 @@ public class FightNexState implements State {
     }
 
     public Optional<Widget> findInInventoryWithLowestDose(String potionNameWithWildCard) {
-        var matchingItems = Inventory.search().matchesWildCardNoCase(potionNameWithWildCard).result();
+        var matchingItems = Inventory.search().matchesWildcard(potionNameWithWildCard).result();
 
         matchingItems.sort(Comparator.comparingInt(i -> {
             Matcher matcher = dosePattern.matcher(i.getName());
@@ -852,12 +767,10 @@ public class FightNexState implements State {
         var opTile = optimalTile.get();
 
         if (opTile == null) {
-            //Utility.sendGameMessage("Failed to find optimal tile during distance handling", "AutoNex");
             return false;
         }
 
         if (opTile.equals(playerLoc)) {
-            //Utility.sendGameMessage("Already in optimal tile", "AutoNex");
             return false;
         }
 
@@ -872,7 +785,7 @@ public class FightNexState implements State {
 
     public boolean handleImportantLooting() {
         log.debug("handleImportantLooting");
-        var groundItems = TileItems.search().filter(itm -> Math.max(itm.getStackGePrice(), itm.getStackHaPrice()) >= 200000).result();
+        var groundItems = TileItems.search().filter(itm -> itm.getName().toLowerCase().contains("clue") || Math.max(itm.getStackGePrice(), itm.getStackHaPrice()) >= 200000).result();
         if (groundItems.isEmpty()) return false;
         boolean pickedUpLoot = false;
         for (var groundItem : groundItems) {
@@ -892,6 +805,13 @@ public class FightNexState implements State {
             if (quantityBeforeClick > Inventory.getItemAmount(groundItem.getId())) {
                 pickedUpLoot = true;
                 Utility.sleepGaussian(300, 600);
+            }
+            try {
+                var price = (double) groundItem.getStackGePrice() / 1000000;
+                String formattedPrice = String.format("%.1f", price) + "m";
+                DiscordNexWebhook.sendToDiscord("Someone just received a valuable drop at Nex: **" + groundItem.getName() + "** worth **" + formattedPrice + "**.");
+            } catch (Exception e) {
+                log.error("Error sending AutoNex discord webhook message", e);
             }
         }
         return pickedUpLoot;
@@ -955,7 +875,7 @@ public class FightNexState implements State {
         boolean isLowPrayer = Utility.getBoostedSkillLevel(Skill.PRAYER) < 20;
         if (isLowHp || isLowPrayer) {
             if (isLowHp) {
-                var brews = Inventory.search().matchesWildCardNoCase("Saradomin brew*");
+                var brews = Inventory.search().matchesWildcard("Saradomin brew*");
                 var foods = plugin.getFoodItems().stream().findFirst();
                 if (brews.empty() && foods.isEmpty()) {
                     //Utility.sendGameMessage("Attempting to exit Nex due to low HP and no food left");
@@ -970,8 +890,8 @@ public class FightNexState implements State {
                 }
             }
             if (isLowPrayer) {
-                var restorePotions = Inventory.search().matchesWildCardNoCase("Super restore*");
-                var prayerPotions = Inventory.search().matchesWildCardNoCase("Prayer potion*");
+                var restorePotions = Inventory.search().matchesWildcard("Super restore*");
+                var prayerPotions = Inventory.search().matchesWildcard("Prayer potion*");
                 if (restorePotions.empty() && prayerPotions.empty()) {
                     //Utility.sendGameMessage("Attempting to exit Nex due to low prayer and no potions left");
                     var altar = TileObjects.search().withName("Altar").withAction("Teleport").nearestToPlayer();
@@ -1044,6 +964,8 @@ public class FightNexState implements State {
             }
         }
 
+        var attackRange = plugin.config.randomizeRange() ? randomRange.get() : plugin.attackTickTracker.getPlayerAttackRange();
+
         if (plugin.config.shouldRandomizeOptimalTile() && isNexPresentAndAttackable()) {
             var nex = getNex();
             var minionWeShouldCareAbout = getDesiredMinion();
@@ -1051,7 +973,7 @@ public class FightNexState implements State {
 
             var isNotTooCloseToNex = getNexDistance() >= MINIMUM_DISTANCE_TO_NEX.get();
             var isNotInDangerousTile = !dangerousTiles.contains(playerLoc);
-            var isInAttackRangeOfPrimaryTarget = primaryTarget == null || primaryTarget.getWorldArea().distanceTo(playerLoc) <= plugin.attackTickTracker.getPlayerAttackRange();
+            var isInAttackRangeOfPrimaryTarget = primaryTarget == null || primaryTarget.getWorldArea().distanceTo(playerLoc) <= attackRange;
             var isOptimalTileNear = playerLoc.distanceTo(opTile) <= 2;
 
             if (isNotTooCloseToNex && isNotInDangerousTile && isInAttackRangeOfPrimaryTarget && isOptimalTileNear) {
@@ -1096,6 +1018,7 @@ public class FightNexState implements State {
             isNexAlive.set(false);
             shouldAvoidNex.set(false);
             deathChargeCasted.set(false);
+            updateRandomMinionPredictionSkips();
             Utility.sendGameMessage("Nex has died!", "AutoNex");
         }
     }
@@ -1111,7 +1034,7 @@ public class FightNexState implements State {
         log.debug("handleStamina");
         if (Walking.getRunEnergy() > nextStaminaAt) return false;
         if (Utility.getTickCount() - lastAteOnTick.get() < 3) return false;
-        var staminaPotion = Inventory.search().matchesWildCardNoCase("stamina potion*").first();
+        var staminaPotion = Inventory.search().matchesWildcard("stamina potion*").first();
         if (staminaPotion.isPresent()) {
             //Utility.sendGameMessage("Drinking " + staminaPotion.get().getName(), "AutoNex");
             lastAteOnTick.set(Utility.getTickCount());
@@ -1122,8 +1045,8 @@ public class FightNexState implements State {
     }
 
     public boolean lowOnSupplies() {
-        var saradominBrews = Inventory.search().matchesWildCardNoCase("Saradomin brew*").result();
-        var superRestores = Inventory.search().matchesWildCardNoCase("Super restore*").result();
+        var saradominBrews = Inventory.search().matchesWildcard("Saradomin brew*").result();
+        var superRestores = Inventory.search().matchesWildcard("Super restore*").result();
 
         var brewSipCount = 0;
         var superRestoreSipCount = 0;
@@ -1155,11 +1078,10 @@ public class FightNexState implements State {
         if (isNexPresent()) return false;
         if (Utility.getTickCount() - nexDiedOnTick.get() < nextRandomWait.get()) return false;
 
-        var shouldLeaveDueToTeamSettings = plugin.config.leaveAfterKills() && plugin.getKillsThisTrip() >= plugin.config.leaveAfterKillsCount();
         var isSmartRestockEnabledAndLowOnSupplies = plugin.config.smartRestock() && lowOnSupplies();
         var isSmartRestockDisabledAndAbove40Kc = !plugin.config.smartRestock() && plugin.getAncientKc() >= 40;
 
-        if (shouldLeaveDueToTeamSettings || isSmartRestockEnabledAndLowOnSupplies || isSmartRestockDisabledAndAbove40Kc) {
+        if (isSmartRestockEnabledAndLowOnSupplies || isSmartRestockDisabledAndAbove40Kc) {
             var altar = TileObjects.search().withName("Altar").withAction("Teleport").nearestToPlayer();
             if (altar.isEmpty()) return false;
             Utility.sendGameMessage("Exiting Nex via altar", "AutoNex");
@@ -1177,11 +1099,6 @@ public class FightNexState implements State {
                 dangerousTiles.add(e.getGameObject().getWorldLocation());
             }
         }
-        /*
-        if (e.getGameObject().getId() == 42944) {
-            spikeTiles.add(e.getGameObject().getWorldLocation());
-        }
-         */
     }
 
     @Subscribe
@@ -1297,16 +1214,19 @@ public class FightNexState implements State {
         // NEX PHASES
         if (event.getMessage().toLowerCase().contains(SMOKE_PHASE_MESSAGE.toLowerCase())) {
             currPhase.set(NexPhase.SMOKE_PHASE);
-            MINIMUM_DISTANCE_TO_NEX.set(6);
+            MINIMUM_DISTANCE_TO_NEX.set(5);
         } else if (event.getMessage().toLowerCase().contains(SHADOW_PHASE_MESSAGE.toLowerCase())) {
             currPhase.set(NexPhase.SHADOW_PHASE);
-            MINIMUM_DISTANCE_TO_NEX.set(plugin.attackTickTracker.getPlayerAttackRange());
+            var attackRange = plugin.config.randomizeRange() ? randomRange.get() : plugin.attackTickTracker.getPlayerAttackRange();
+            MINIMUM_DISTANCE_TO_NEX.set(attackRange);
         } else if (event.getMessage().toLowerCase().contains(BLOOD_PHASE_MESSAGE.toLowerCase())) {
             currPhase.set(NexPhase.BLOOD_PHASE);
-            MINIMUM_DISTANCE_TO_NEX.set(1);
+            var dist = plugin.config.randomizeRange() ? Utility.random(1, 2) : 1;
+            MINIMUM_DISTANCE_TO_NEX.set(dist);
         } else if (event.getMessage().toLowerCase().contains(ICE_PHASE_MESSAGE.toLowerCase())) {
+            var dist = plugin.config.randomizeRange() ? Utility.random(1, 2) : 1;
             currPhase.set(NexPhase.ICE_PHASE);
-            MINIMUM_DISTANCE_TO_NEX.set(1);
+            MINIMUM_DISTANCE_TO_NEX.set(dist);
         } else if (event.getMessage().toLowerCase().contains(ZAROS_PHASE_MESSAGE.toLowerCase())) {
             currPhase.set(NexPhase.ZAROS_PHASE);
             MINIMUM_DISTANCE_TO_NEX.set(1);
@@ -1314,12 +1234,28 @@ public class FightNexState implements State {
 
         // MINIONS
         if (event.getMessage().toLowerCase().contains(FUMUS.toLowerCase() + ",")) {
+            if (plugin.config.randomMinionSkip() && !minionsWeShouldCareAbout.get().contains("Fumus")) {
+                var randomInt = Utility.random(0, 1);
+                if (randomInt == 1) return;
+            }
             currMinion.set(Minion.FUMUS);
         } else if (event.getMessage().toLowerCase().contains(UMBRA.toLowerCase() + ",")) {
+            if (plugin.config.randomMinionSkip() && !minionsWeShouldCareAbout.get().contains("Umbra")) {
+                var randomInt = Utility.random(0, 1);
+                if (randomInt == 1) return;
+            }
             currMinion.set(Minion.UMBRA);
         } else if (event.getMessage().toLowerCase().contains(CRUOR.toLowerCase() + ",")) {
+            if (plugin.config.randomMinionSkip() && !minionsWeShouldCareAbout.get().contains("Cruor")) {
+                var randomInt = Utility.random(0, 1);
+                if (randomInt == 1) return;
+            }
             currMinion.set(Minion.CRUOR);
         } else if (event.getMessage().toLowerCase().contains(GLACIES.toLowerCase() + ",")) {
+            if (plugin.config.randomMinionSkip() && !minionsWeShouldCareAbout.get().contains("Glacies")) {
+                var randomInt = Utility.random(0, 1);
+                if (randomInt == 1) return;
+            }
             currMinion.set(Minion.GLACIES);
         }
 
@@ -1378,16 +1314,6 @@ public class FightNexState implements State {
         if (actor instanceof NPC) {
             if (actor.getName() != null) {
                 if (actor.getName().toLowerCase().contains("nex")) {
-                    /*
-                    currMinion = null;
-                    currPhase = null;
-                    dangerousTiles.clear();
-                    MINIMUM_DISTANCE_TO_NEX.set(3);
-                    nexDiedOnTick.set(Utility.getTickCount());
-                    nextRandomWait.set(generateNextRandomWait());
-                    plugin.setTotalKillCount(plugin.getTotalKillCount() + 1);
-                    Utility.sendGameMessage("Nex has died!", "AutoNex");
-                     */
                 } else if (actor.getName().toLowerCase().contains(FUMUS.toLowerCase()) || actor.getName().toLowerCase().contains(UMBRA.toLowerCase()) || actor.getName().toLowerCase().contains(CRUOR.toLowerCase()) || actor.getName().toLowerCase().contains(GLACIES.toLowerCase())) {
                     Utility.sendGameMessage(actor.getName() + " has died!", "AutoNex");
                     currMinion.set(null);

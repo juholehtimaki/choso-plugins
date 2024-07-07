@@ -166,19 +166,19 @@ public interface AutoNexPluginConfig extends Config {
     }
 
     @ConfigSection(
-            name = "Other settings",
-            description = "Other settings",
+            name = "Randomization settings",
+            description = "Randomization settings",
             position = 14,
             closedByDefault = true
     )
-    String otherSettings = "otherSettings";
+    String randomization = "randomization";
 
     @ConfigItem(
             keyName = "shouldRandomizeOptimalTile",
             name = "Randomize walking",
             description = "Determines whether the plugin should randomize walk",
-            position = 15,
-            section = otherSettings
+            position = 1,
+            section = randomization
     )
     default boolean shouldRandomizeOptimalTile() {
         return false;
@@ -188,12 +188,42 @@ public interface AutoNexPluginConfig extends Config {
             keyName = "waitSpot",
             name = "Wait spot",
             description = "Determines the nex spawn waiting point",
-            position = 16,
-            section = otherSettings
+            position = 2,
+            section = randomization
     )
     default WaitSpot waitSpot() {
         return WaitSpot.EDGE_OPTIMAL;
     }
+
+    @ConfigItem(
+            keyName = "randomizeRange",
+            name = "Randomize range",
+            description = "Randomize range to prevent stacking with others",
+            position = 3,
+            section = randomization
+    )
+    default boolean randomizeRange() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "randomMinionSkip",
+            name = "Randomly skip minion",
+            description = "Randomly skip minions",
+            position = 4,
+            section = randomization
+    )
+    default boolean randomMinionSkip() {
+        return false;
+    }
+
+    @ConfigSection(
+            name = "Other settings",
+            description = "Other settings",
+            position = 14,
+            closedByDefault = true
+    )
+    String otherSettings = "otherSettings";
 
     @ConfigItem(
             keyName = "assistMode",
@@ -203,17 +233,6 @@ public interface AutoNexPluginConfig extends Config {
             section = otherSettings
     )
     default boolean assistMode() {
-        return false;
-    }
-
-    @ConfigItem(
-            keyName = "allowDrag",
-            name = "Allow attack to drag you",
-            description = "This should only be enabled when using weapon with 10 attack range",
-            position = 18,
-            section = otherSettings
-    )
-    default boolean allowDrag() {
         return false;
     }
 
@@ -259,107 +278,6 @@ public interface AutoNexPluginConfig extends Config {
             hidden = true
     )
     default boolean shouldExecute() {
-        return false;
-    }
-
-    @ConfigSection(
-            name = "Team settings",
-            description = "Team settings",
-            position = 50,
-            closedByDefault = true
-    )
-    String teamSettings = "teamSettings";
-
-    @ConfigItem(
-            keyName = "leaveAfterKills",
-            name = "Leave after X kills",
-            description = "Leave after specific amount of kills in order to keep the team synced",
-            position = 1,
-            section = teamSettings
-    )
-    default boolean leaveAfterKills() {
-        return false;
-    }
-
-    @ConfigItem(
-            keyName = "leaveAfterKillsCount",
-            name = "Kills before leaving",
-            description = "Number of kills before leaving Nex in order to keep the team synced",
-            position = 2,
-            section = teamSettings
-    )
-    @Range(
-            min = 1,
-            max = 100
-    )
-    default int leaveAfterKillsCount() {
-        return 8;
-    }
-
-    @ConfigItem(
-            keyName = "killSwitch",
-            name = "Kill switch",
-            description = "Kill switch",
-            position = 3,
-            section = teamSettings
-    )
-    default boolean killSwitch() {
-        return false;
-    }
-
-    @ConfigItem(
-            keyName = "killSwitchCommand",
-            name = "Kill switch command",
-            description = "Seeing the command in the chat triggers plugin to request stop",
-            position = 4,
-            section = teamSettings
-    )
-
-    default String killSwitchCommand() {
-        return "time to go home bois";
-    }
-
-    @ConfigItem(
-            keyName = "killBloodReavers",
-            name = "Kill Blood Reavers",
-            description = "Determines whether the plugin should attempt to kill blood reavers if they are in range. This does not contribute to the kill",
-            position = 5,
-            section = teamSettings
-    )
-    default boolean killBloodReavers() {
-        return false;
-    }
-
-    @ConfigItem(
-            keyName = "forceKillMinion",
-            name = "Force kill minions",
-            description = "Force kill minion at a cost of losing HP. This is an experimental feature",
-            position = 6,
-            section = teamSettings
-    )
-    default boolean forceKillMinion() {
-        return false;
-    }
-
-    @ConfigItem(
-            keyName = "playSafelyShadowPhase",
-            name = "Play safer shadow minion",
-            description = "Play more safely when force killing minion. This is an experimental feature which should only be used in private mass",
-            position = 7,
-            section = teamSettings
-    )
-    default boolean playSafelyShadowPhase() {
-        return false;
-    }
-
-    @ConfigItem(
-            keyName = "experimentalReavers",
-            name = "Experimental reavers",
-            description = "EXPERIMENTAL, DO NOT USE",
-            position = 8,
-            section = teamSettings
-    )
-    default boolean experimentalReavers() {
         return false;
     }
 }

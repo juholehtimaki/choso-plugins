@@ -70,7 +70,7 @@ public class AutoNexPluginScreenOverlay extends OverlayPanel {
                 .right(killsThisTrip)
                 .rightColor(Color.CYAN)
                 .build());
-        
+
         String seenUniques = Integer.toString(plugin.getSeenUniqueItems());
 
         panelComponent.getChildren().add(LineComponent.builder()
@@ -155,6 +155,16 @@ public class AutoNexPluginScreenOverlay extends OverlayPanel {
                 .right(weaponRange)
                 .rightColor(Color.CYAN)
                 .build());
+
+        if (plugin.config.randomizeRange()) {
+            var randomRange = Integer.toString(plugin.fightNexState.getRandomRange().get());
+            panelComponent.getChildren().add(LineComponent.builder()
+                    .left("Random range:")
+                    .leftColor(Color.CYAN)
+                    .right(randomRange)
+                    .rightColor(Color.CYAN)
+                    .build());
+        }
 
         return super.render(graphics);
     }

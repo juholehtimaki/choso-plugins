@@ -5,10 +5,6 @@ import com.theplug.PaistiUtils.API.Loadouts.InventoryLoadout;
 import com.theplug.PaistiUtils.API.Prayer.PPrayer;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Skill;
-import net.runelite.client.RuneLite;
-import net.runelite.client.game.WorldService;
-import net.runelite.http.api.worlds.World;
-import net.runelite.http.api.worlds.WorldResult;
 
 @Slf4j
 public class RestockState implements State {
@@ -84,7 +80,7 @@ public class RestockState implements State {
                 }
                 Utility.sleepUntilCondition(() -> Inventory.search().withName("Super restore(4)").first().isPresent());
                 for (int i = 0; i < 4; i++) {
-                    var superRestore = BankInventory.search().matchesWildCardNoCase("Super restore*").first();
+                    var superRestore = BankInventory.search().matchesWildcard("Super restore*").first();
                     if (Utility.getBoostedSkillLevel(Skill.PRAYER) >= Utility.getRealSkillLevel(Skill.PRAYER) && Utility.getBoostedSkillLevel(Skill.RANGED) >= Utility.getRealSkillLevel(Skill.RANGED)) {
                         Utility.sleepGaussian(2000, 3000);
                         break;
@@ -168,7 +164,7 @@ public class RestockState implements State {
                 plugin.paistiBreakHandler.startBreak(plugin);
 
                 Utility.sleepGaussian(1000, 2000);
-                Utility.sleepUntilCondition(() -> !plugin.paistiBreakHandler.isBreakActive(plugin) && Utility.isLoggedIn(), 99999999, 5000);
+                Utility.sleepUntilCondition(() -> !plugin.paistiBreakHandler.isBreakActive(plugin), 99999999, 5000);
             }
             if (handleEnterNex()) {
                 Utility.sleepGaussian(2000, 4000);
