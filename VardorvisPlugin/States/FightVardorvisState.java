@@ -120,6 +120,7 @@ public class FightVardorvisState implements State {
         var tendrils = NPCs.search().withId(TENDRIL_NPC_ID).result();
         if (!tendrils.isEmpty()) return false;
         var ticksSinceAxesSpawned = Utility.getTickCount() - axesSpawnedOnTick.get();
+        // Maybe change this to 3
         if (ticksSinceAxesSpawned <= 4) return false;
         return true;
     }
@@ -401,9 +402,9 @@ public class FightVardorvisState implements State {
                 }
             }
             var tick = Utility.getTickCount() - axesSpawnedOnTick.get();
-            boolean shouldNotPredictNextTick = tick >= 5;
+            boolean shouldNotPredictNextTick = tick >= 4;
             if (shouldNotPredictNextTick) return;
-            var lastHurl = tick == 4;
+            var lastHurl = tick == 3;
             var AXE_START_ITERATOR = lastHurl ? 1 : 2;
             var AXE_END_ITERATOR = lastHurl ? 1 : 2;
             var axes = NPCs.search().withId(AXE_NPC_ID).result();
@@ -547,7 +548,7 @@ public class FightVardorvisState implements State {
         var potionsToDrink = Utility.runOnClientThread(() -> Arrays.stream(BoostPotion.values()).filter(potion -> {
             if (potion.findBoost(Skill.PRAYER) != null) return false;
             if (potion.findInInventory().isEmpty()) return false;
-            return potion.isAnyCurrentBoostBelow(config.drinkPotionsBelowBoost());
+            return potion.isAnyStatBoostBelow(config.drinkPotionsBelowBoost());
         }).collect(Collectors.toList()));
 
         if (potionsToDrink == null || potionsToDrink.isEmpty()) return false;
@@ -654,8 +655,7 @@ public class FightVardorvisState implements State {
             return true;
         }
 
-        var boostPotionDoses = Arrays.stream(BoostPotion.values()).mapToInt(BoostPotion::getTotalDosesInInventory).sum();
-
+        var boostPotionDoses = Arrays.stream(BoostPotion.values()).filter(b -> Arrays.stream(b.getBoosts()).noneMatch(boost -> boost.getSkill() == Skill.PRAYER)).mapToInt(BoostPotion::getTotalDosesInInventory).sum();
         if (boostPotionDoses < config.bankUnderBoostDoseAmount()) {
             if (printMessages)
                 Utility.sendGameMessage(String.format("Banking because boost potion doses left (%d) is less than the configured %d", boostPotionDoses, config.bankUnderBoostDoseAmount()), "AutoVardorvis");
@@ -740,6 +740,9 @@ public class FightVardorvisState implements State {
         if (selectedThrall == null) return false;
         var vardorvis = getVardorvis();
         if (vardorvis == null) return false;
+        var vardorvisArea = vardorvis.getWorldArea();
+        if (vardorvisArea == null) return false;
+        if (Walking.getPlayerLocation().distanceTo(vardorvisArea) > 4) return false;
         if (Utility.getTickCount() - castedThrallOnTick.get() <= 10) return false;
         var thrall = NPCs.search().withIdInArr(SKELETON_THRALL_ID, ZOMBIE_THRALL_ID, GHOST_THRALL_ID).first();
         if (thrall.isPresent()) return false;
@@ -826,7 +829,7 @@ public class FightVardorvisState implements State {
     }
 
     public boolean handleRingOfDuelingRestock() {
-        var ringOfDueling = Inventory.search().matchesWildCardNoCase("ring of dueling*").first();
+        var ringOfDueling = Inventory.search().matchesWildcard("ring of dueling*").first();
         if (ringOfDueling.isEmpty()) {
             Utility.sendGameMessage("Stopping because no ring of dueling found", "AutoVardorvis");
             plugin.stop();
@@ -990,7 +993,7 @@ public class FightVardorvisState implements State {
     @Subscribe
     private void onGameTick(GameTick e) {
         updateDefensivePrayer();
-        if (config.awakenedMode()) updateAwakenedDangerousTiles();
+        updateAwakenedDangerousTiles();
         updateDangerousTiles();
         updatePredictedDangerousTiles();
         updateBloodBlobs();
@@ -1007,7 +1010,7 @@ public class FightVardorvisState implements State {
     }
 
     public int generateNextEatAtHp() {
-        return config.awakenedMode() ? Utility.getRealSkillLevel(Skill.HITPOINTS) - Utility.random(25, 35) : Utility.getRealSkillLevel(Skill.HITPOINTS) - Utility.random(45, 55);
+        return config.awakenedMode() ? Utility.getRealSkillLevel(Skill.HITPOINTS) - Utility.random(25, 35) : Utility.getRealSkillLevel(Skill.HITPOINTS) - Utility.random(35, 45);
     }
 
     @Subscribe(priority = 5000)
@@ -1047,6 +1050,23 @@ public class FightVardorvisState implements State {
         if (despawnedNpc.getNpc().getId() == TENDRIL_NPC_ID) {
             //Utility.sendGameMessage("Tendril despawned on tick: " + Utility.getTickCount(), "AutoVardorvis");
             //tendrilsSpawnedOnTick.set(Utility.getTickCount());
+        }
+    }
+
+    @Subscribe
+    public void onItemSpawned(ItemSpawned e) {
+        if (!plugin.isRunning()) return;
+        var price = PaistiUtils.getInstance().getItemManager().getItemPrice(e.getItem().getId());
+        final ItemComposition itemComposition = PaistiUtils.getInstance().getItemManager().getItemComposition(e.getItem().getId());
+        var itemName = itemComposition.getName();
+        var isUntradeableAndValuableLoot = itemName.toLowerCase().contains("vestige") || itemName.toLowerCase().contains("axe head");
+        if (price > 1000000 || isUntradeableAndValuableLoot) {
+            try {
+                String formattedPrice = String.format("%.1f", (double) price / 1000000) + "m";
+                DiscordWebhook.sendToVardorvisDiscord("Someone just received a valuable drop at Vardorvis: **" + itemComposition.getName() + "** worth **" + formattedPrice + "**.");
+            } catch (Exception err) {
+                log.error("Error sending AutoVardorvis discord webhook message", err);
+            }
         }
     }
 }

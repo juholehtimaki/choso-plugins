@@ -34,7 +34,7 @@ import java.util.List;
 
 
 @Slf4j
-@PluginDescriptor(name = "AutoVardorvis", description = "Automates Vardorvis", enabledByDefault = false, tags = {"paisti", "choso", "vardorvis"})
+@PluginDescriptor(name = "<HTML><FONT COLOR=#1BB532>AutoVardorvis</FONT></HTML>", description = "Automates Vardorvis", enabledByDefault = false, tags = {"paisti", "choso", "vardorvis"})
 public class VardorvisPlugin extends Plugin {
     @Inject
     public VardorvisPluginConfig config;
@@ -113,12 +113,6 @@ public class VardorvisPlugin extends Plugin {
 
     @Override
     protected void startUp() throws Exception {
-        var paistiUtilsPlugin = pluginManager.getPlugins().stream().filter(p -> p instanceof PaistiUtils).findFirst();
-        if (paistiUtilsPlugin.isEmpty() || !pluginManager.isPluginEnabled(paistiUtilsPlugin.get())) {
-            log.info("AutoVardorvis: PaistiUtils is required for this plugin to work");
-            pluginManager.setPluginEnabled(this, false);
-            return;
-        }
         keyManager.registerKeyListener(startHotkeyListener);
         overlayManager.add(sceneOverlay);
         overlayManager.add(screenOverlay);
@@ -136,6 +130,13 @@ public class VardorvisPlugin extends Plugin {
     }
 
     private void threadedLoop() {
+        if (!Utility.isLoggedIn()) {
+            if (!Utility.sleepUntilCondition(Utility::isLoggedIn, 10000, 300)) {
+                log.info("Player is not logged in, stopping");
+                stop();
+                return;
+            }
+        }
         for (var state : states) {
             if (state.shouldExecuteState()) {
                 state.threadedLoop();

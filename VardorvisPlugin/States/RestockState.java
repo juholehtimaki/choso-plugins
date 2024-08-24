@@ -43,10 +43,10 @@ public class RestockState implements State {
     private static boolean handleRejuvenationPoolPoh() {
         log.debug("handleRejuvenationPoolPoh");
         if (!House.isPlayerInsideHouse()) return false;
-        var poolOfRefreshment = TileObjects.search().withName("Ornate pool of Rejuvenation").withAction("Drink").nearestToPlayer();
+        var poolOfRefreshment = TileObjects.search().withNameContains("rejuvenation").withAction("Drink").nearestToPlayer();
         if (poolOfRefreshment.isEmpty()) {
             Utility.sleepGaussian(1200, 1600);
-            poolOfRefreshment = TileObjects.search().withName("Ornate pool of Rejuvenation").withAction("Drink").nearestToPlayer();
+            poolOfRefreshment = TileObjects.search().withNameContains("rejuvenation").withAction("Drink").nearestToPlayer();
             if (poolOfRefreshment.isEmpty()) {
                 return false;
             }
@@ -156,7 +156,7 @@ public class RestockState implements State {
         log.debug("handleBanking");
         if (loadout.isSatisfied()) return false;
 
-        if (config.bankingMethod() == BankingMethod.HOUSE || config.bankingMethod() == BankingMethod.FEROX ) {
+        if (config.bankingMethod() == BankingMethod.HOUSE || config.bankingMethod() == BankingMethod.FEROX) {
             return handleGenericBanking();
         }
         return false;
@@ -243,7 +243,7 @@ public class RestockState implements State {
             plugin.paistiBreakHandler.startBreak(plugin);
 
             Utility.sleepGaussian(1000, 2000);
-            Utility.sleepUntilCondition(() -> !plugin.paistiBreakHandler.isBreakActive(plugin) && Utility.isLoggedIn(), 99999999, 5000);
+            Utility.sleepUntilCondition(() -> !plugin.paistiBreakHandler.isBreakActive(plugin), 99999999, 5000);
         }
         if (handleWalkToVardorvis()) {
             Utility.sleepGaussian(200, 400);
