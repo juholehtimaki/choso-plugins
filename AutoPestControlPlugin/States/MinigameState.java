@@ -5,9 +5,9 @@ import com.theplug.PaistiUtils.API.*;
 import com.theplug.PaistiUtils.API.Prayer.PPrayer;
 import com.theplug.PaistiUtils.PathFinding.LocalPathfinder;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
-import jdk.jshell.execution.Util;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
+import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldArea;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ChatMessage;
@@ -83,7 +83,8 @@ public class MinigameState implements State {
         if (desiredWorldArea.get() == null) return false;
         if (desiredWorldArea.get().contains(Walking.getPlayerLocation())) return false;
         var rMap = plugin.getPestControlReachabilityMap();
-        var pathToPortal = rMap.getPathTo(desiredPortalLoc.get());
+        var dPortalLoc = desiredPortalLoc.get().dx(Utility.random(-3, 3)).dy(Utility.random(-3, 3));
+        var pathToPortal = rMap.getPathTo(dPortalLoc);
         PATH_DEBUG.set(pathToPortal);
         return plugin.progressWalkingOnPestPath(pathToPortal);
     }
@@ -123,6 +124,7 @@ public class MinigameState implements State {
         if (!plugin.config.useQuickPrayers()) return false;
         if (desiredWorldArea.get() == null) return false;
         if (!desiredWorldArea.get().contains(Walking.getPlayerLocation())) return false;
+        if (Utility.getBoostedSkillLevel(Skill.PRAYER) == 0) return false;
         if (!PPrayer.isQuickPrayerActive()) return PPrayer.setQuickPrayerEnabled(true);
         return false;
     }
@@ -132,15 +134,25 @@ public class MinigameState implements State {
         var rMap = LocalPathfinder.getReachabilityMap();
         var possibleTargets = NPCs.search().alive().withAction("Attack").result().stream().filter(n -> desiredWorldArea.get().contains(n.getWorldLocation()) && rMap.isReachable(n)).collect(Collectors.toList());
         if (possibleTargets.isEmpty()) return false;
-        possibleTargets.sort(Comparator.comparingInt(p -> p.getWorldArea().distanceTo(Walking.getPlayerLocation())));
-        possibleTargets.sort(Comparator.comparingInt(p -> {
+        Utility.sleepGaussian(300, 1800);
+        var targetsToAttack = NPCs.search().alive().withAction("Attack").result().stream().filter(n -> desiredWorldArea.get().contains(n.getWorldLocation()) && rMap.isReachable(n)).collect(Collectors.toList());
+        if (targetsToAttack.isEmpty()) return false;
+        targetsToAttack.sort(Comparator.comparingInt(p -> p.getWorldArea().distanceTo(Walking.getPlayerLocation())));
+        targetsToAttack.sort(Comparator.comparingInt(p -> {
             if (p.getName() == null || p.getName().equalsIgnoreCase("splatter")) return Integer.MAX_VALUE;
             if (p.getName().equalsIgnoreCase("brawler")) return 1;
             if (p.getName().equalsIgnoreCase("spinner")) return 2;
             if (p.getName().equalsIgnoreCase("portal")) return 3;
-            return 5;
+            boolean targetingUs = p.getInteracting() != null && p.getInteracting() == PaistiUtils.getClient().getLocalPlayer();
+            boolean ourCurrentTarget = Utility.getInteractionTarget() != null && Utility.getInteractionTarget() == p;
+            if (targetingUs && ourCurrentTarget)
+                return 4;
+            if (targetingUs)
+                return 5;
+            if (ourCurrentTarget) return 6;
+            return 7;
         }));
-        var target = possibleTargets.get(0);
+        var target = targetsToAttack.get(0);
         if (Utility.getInteractionTarget() == target) return false;
         //Utility.sendGameMessage("Attempting to attack: " + target.getName(), "AutoPestControl");
         Interaction.clickNpc(target, "Attack");
@@ -194,6 +206,7 @@ public class MinigameState implements State {
     }
 
     private boolean handleClosingDoors() {
+        if (!config.closeDoors()) return false;
         if (Utility.getTickCount() - closedDoorOnTick.get() < 20) return false;
         WorldPoint corner1 = plugin.getWalledAreaCorner1();
         WorldPoint corner2 = plugin.getWalledAreaCorner2();
@@ -201,21 +214,21 @@ public class MinigameState implements State {
 
         if (walledArea.contains(Walking.getPlayerLocation())) return false;
 
-        var closeDoor = TileObjects.search().withinDistance(5).withAction("Close").nearestToPlayer();
+        var closeDoor = TileObjects.search().withId(14236, 14234).withinDistance(5).withAction("Close").nearestToPlayer();
         if (closeDoor.isEmpty()) {
             return false;
         }
 
         Boolean playersNearbyInsideFence = Utility.runOnClientThread(() -> PaistiUtils.getClient().getPlayers().stream().anyMatch(p -> {
             if (p != PaistiUtils.getClient().getLocalPlayer()
-                    && p.getWorldLocation().distanceTo(closeDoor.get().getWorldLocation()) <= 3
+                    && p.getWorldLocation().distanceTo(closeDoor.get().getWorldLocation()) <= 5
                     && walledArea.contains(p.getWorldLocation())) return true;
             return false;
         }));
 
         if (Boolean.FALSE.equals(playersNearbyInsideFence)) {
             Interaction.clickTileObject(closeDoor.get(), "Close");
-            if (Utility.sleepUntilCondition(() -> TileObjects.search().withinDistance(3).withAction("Close").empty(), 3000, 600)) {
+            if (Utility.sleepUntilCondition(() -> TileObjects.search().withId(14236, 14234).withinDistance(5).withAction("Close").empty(), 6000, 600)) {
                 closedDoorOnTick.set(Utility.getTickCount());
                 return true;
             }
@@ -251,6 +264,10 @@ public class MinigameState implements State {
 
     @Override
     public void threadedLoop() {
+        if (Utility.getBoostedSkillLevel(Skill.HITPOINTS) <= 0) {
+            Utility.sleepGaussian(1200, 1800);
+            return;
+        }
         if (handleTravelling()) {
             Utility.sleepGaussian(200, 300);
             return;

@@ -35,7 +35,7 @@ import java.util.function.Function;
 
 
 @Slf4j
-@PluginDescriptor(name = "AutoPestControl", description = "Farms pest control", enabledByDefault = false, tags = {"paisti", "choso", "pest control", "pc"})
+@PluginDescriptor(name = "<HTML><FONT COLOR=#1BB532>AutoPestControl</FONT></HTML>", description = "Farms pest control", enabledByDefault = false, tags = {"paisti", "choso", "pest control", "pc"})
 public class AutoPestControlPlugin extends Plugin {
     @Inject
     public AutoPestControlPluginConfig config;
@@ -81,7 +81,7 @@ public class AutoPestControlPlugin extends Plugin {
     private static final WorldPoint YELLOW_PORTAL_WORLD_POINT = new WorldPoint(2670, 2575, 0);
     private static final WorldPoint RED_PORTAL_WORLD_POINT = new WorldPoint(2646, 2574, 0);
     private final WorldPoint WALLED_AREA_CORNER_1 = new WorldPoint(2643, 2585, 0);
-    private final WorldPoint WALLED_AREA_CORNER_2 = new WorldPoint(2669, 2606, 0);
+    private final WorldPoint WALLED_AREA_CORNER_2 = new WorldPoint(2670, 2606, 0);
 
     public WorldPoint getWalledAreaCorner1() {
         return Utility.threadSafeGetInstanceWorldPoint(WALLED_AREA_CORNER_1);
@@ -142,11 +142,58 @@ public class AutoPestControlPlugin extends Plugin {
                 Walking.getPlayerLocation(),
                 neverGoToTiles,
                 allowPathingOnTiles,
+                null,
                 null
         );
     }
 
     public static WorldPoint getNextTileToHandle(List<WorldPoint> path) {
+        var reachabilityMap = LocalPathfinder.getReachabilityMap();
+        WorldPoint nearestReachableTile = null;
+        int nearestReachableIndex = -1;
+        Integer nearestTileCost = null;
+        WorldPoint nextTileToHandle = null;
+        for (int i = 0; i < path.size(); i++) {
+            var tile = path.get(i);
+            if (tile.distanceTo(Walking.getPlayerLocation()) > 20) continue;
+            if (reachabilityMap.isReachable(tile) && (nearestTileCost == null || reachabilityMap.getCostTo(tile) < nearestTileCost)) {
+                nearestReachableTile = tile;
+                nearestReachableIndex = i;
+                nearestTileCost = reachabilityMap.getCostTo(tile);
+            }
+        }
+        if (nearestReachableTile == null) {
+            log.error("Could not find a nearby reachable tile in the path");
+            return null;
+        }
+
+        for (int i2 = Math.min(nearestReachableIndex, path.size() - 1); i2 < path.size(); i2++) {
+            WorldPoint tile = path.get(i2);
+            WorldPoint nextTile = i2 + 1 < path.size() ? path.get(i2 + 1) : null;
+            WorldPoint prevTile = i2 - 1 >= 0 ? path.get(i2 - 1) : null;
+            boolean canBeReachedByWalking = reachabilityMap.isReachable(tile);
+            if (prevTile != null && canBeReachedByWalking) {
+                // Trace the path from the previous node to the current node and see if we can walk to the current node via that path
+                var dx = tile.getX() - prevTile.getX();
+                var dy = tile.getY() - prevTile.getY();
+                canBeReachedByWalking = LocalPathfinder.canWalkToDirection(prevTile, dx, dy);
+            }
+
+
+            boolean isWithinReasonableDistance = Walking.getPlayerLocation().distanceTo(tile) < 8;
+            if (canBeReachedByWalking && isWithinReasonableDistance) {
+                // As this node can still be reached, we want to handle the next one (maybe a door blocking the path)
+                if (nextTile == null) {
+                    // If there is no next node left, just return this one
+                    nextTileToHandle = tile;
+                    break;
+                }
+                nextTileToHandle = nextTile;
+            } else {
+                // We've hit the furthest node we can reach
+                break;
+            }
+        }
 
         return nextTileToHandle;
     }
@@ -154,6 +201,63 @@ public class AutoPestControlPlugin extends Plugin {
     public static AtomicReference<WorldPoint> next_tile_debug_boi = new AtomicReference<>(null);
 
     public boolean progressWalkingOnPestPath(List<WorldPoint> path) {
+        if (path == null) return true;
+        if (path.isEmpty()) return true;
+
+        var nextTileToHandle = getNextTileToHandle(path);
+        if (nextTileToHandle == null) {
+            log.error("Could not find next tile to handle");
+            return false;
+        }
+        next_tile_debug_boi.set(nextTileToHandle);
+
+        var reachabilityMap = LocalPathfinder.getReachabilityMap();
+        if (reachabilityMap.isReachable(nextTileToHandle) && reachabilityMap.getCostTo(nextTileToHandle) <= Walking.getPlayerLocation().distanceTo(nextTileToHandle) + 3) {
+            if (Walking.sceneWalk(nextTileToHandle)) {
+                return Utility.sleepUntilCondition(() -> Walking.getPlayerLocation().distanceTo(nextTileToHandle) <= 2);
+            } else {
+                return false;
+            }
+        }
+
+        // Handle doors etc.
+        var doorObject = TileObjects.search()
+                .withAction("Open")
+                .withinDistanceToPoint(2, nextTileToHandle)
+                .nearestToPoint(nextTileToHandle);
+        if (doorObject.isEmpty()) {
+            log.error("Could not find door object");
+            return false;
+        }
+
+        var door = doorObject.get();
+        if (Interaction.clickTileObject(door, "Open")) {
+            Utility.sleepUntilCondition(() -> TileObjects.search().withinDistanceToPoint(1, door.getWorldLocation()).withAction("Open").empty(), 6000, 600);
+            Walking.sceneWalk(nextTileToHandle);
+            Utility.sleepUntilCondition(() -> Walking.getPlayerLocation().equals(nextTileToHandle), 3600, 600);
+            WorldPoint corner1 = getWalledAreaCorner1();
+            WorldPoint corner2 = getWalledAreaCorner2();
+            Geometry.Cuboid walledArea = new Geometry.Cuboid(corner1.getX(), corner1.getY(), corner1.getPlane(), corner2.getX(), corner2.getY(), corner2.getPlane());
+
+            var playerInsideTheFence = walledArea.contains(Walking.getPlayerLocation());
+
+            Boolean shouldNotCloseTheDoor = Utility.runOnClientThread(() -> PaistiUtils.getClient().getPlayers().stream().anyMatch(p -> {
+                if ((p != PaistiUtils.getClient().getLocalPlayer()
+                        && p.getWorldLocation().distanceTo(Walking.getPlayerLocation()) <= 4
+                        && playerInsideTheFence) != walledArea.contains(p.getWorldLocation()))
+                    return true;
+                return false;
+            }));
+
+            if (Boolean.FALSE.equals(shouldNotCloseTheDoor)) {
+                var closeDoor = TileObjects.search().withinDistance(3).withAction("Close").nearestToPlayer();
+                if (closeDoor.isPresent()) {
+                    Interaction.clickTileObject(closeDoor.get(), "Close");
+                    Utility.sleepUntilCondition(() -> TileObjects.search().withinDistance(3).withAction("Close").empty(), 1200, 600);
+                }
+            }
+            return true;
+        }
 
         return false;
     }
@@ -191,12 +295,6 @@ public class AutoPestControlPlugin extends Plugin {
 
     @Override
     protected void startUp() throws Exception {
-        var paistiUtilsPlugin = pluginManager.getPlugins().stream().filter(p -> p instanceof PaistiUtils).findFirst();
-        if (paistiUtilsPlugin.isEmpty() || !pluginManager.isPluginEnabled(paistiUtilsPlugin.get())) {
-            log.info("AutoPestControl: PaistiUtils is required for this plugin to work");
-            pluginManager.setPluginEnabled(this, false);
-            return;
-        }
         keyManager.registerKeyListener(startHotkeyListener);
         overlayManager.add(sceneOverlay);
         overlayManager.add(screenOverlay);
@@ -215,6 +313,13 @@ public class AutoPestControlPlugin extends Plugin {
     }
 
     private void threadedLoop() {
+        if (!Utility.isLoggedIn()) {
+            if (!Utility.sleepUntilCondition(Utility::isLoggedIn, 10000, 300)) {
+                log.info("Player is not logged in, stopping");
+                stop();
+                return;
+            }
+        }
         for (var state : states) {
             if (state.shouldExecuteState()) {
                 state.threadedLoop();

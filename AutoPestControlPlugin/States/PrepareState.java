@@ -63,12 +63,12 @@ public class PrepareState implements State {
     @Override
     public void threadedLoop() {
         if (plugin.paistiBreakHandler.shouldBreak(plugin)) {
-            Utility.sleepGaussian(6000, 80000);
+            Utility.sleepGaussian(6000, 8000);
             Utility.sendGameMessage("Taking a break", "AutoPestControl");
             plugin.paistiBreakHandler.startBreak(plugin);
 
             Utility.sleepGaussian(1000, 2000);
-            Utility.sleepUntilCondition(() -> !plugin.paistiBreakHandler.isBreakActive(plugin) && Utility.isLoggedIn(), 99999999, 5000);
+            Utility.sleepUntilCondition(() -> !plugin.paistiBreakHandler.isBreakActive(plugin), 99999999, 5000);
         }
         Utility.sleepGaussian(1200, 1800);
         if (!shouldExecuteState()) {

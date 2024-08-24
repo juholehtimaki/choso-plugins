@@ -1,6 +1,7 @@
 package com.theplug.AutoPestControlPlugin;
 
 import com.theplug.DontObfuscate;
+import com.theplug.PaistiUtils.API.Utility;
 import com.theplug.PaistiUtils.API.Walking;
 import com.theplug.PaistiUtils.API.Widgets;
 import lombok.Getter;
@@ -33,9 +34,8 @@ public class Game {
     PortalContext desiredPortal;
 
     public Game() {
-        Random random = new Random();
         PortalContext[] portals = {purple, blue, yellow, red};
-        desiredPortal = portals[random.nextInt(portals.length)];
+        desiredPortal = portals[Utility.random(0, 3)];
     }
 
     public void fall(String color) {
@@ -148,8 +148,7 @@ public class Game {
         if (isZero(desiredPortalWidget)) {
             var alivePortals = getAlivePortals();
             if (alivePortals.isEmpty()) return;
-            alivePortals.sort(Comparator.comparingInt(p -> p.getPortal().getInstancedLoc().distanceTo(Walking.getPlayerLocation())));
-            desiredPortal = alivePortals.get(0);
+            desiredPortal = alivePortals.get(Utility.random(0, alivePortals.size() - 1));
         }
     }
 }

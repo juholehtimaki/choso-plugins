@@ -14,13 +14,34 @@ public interface AutoPestControlPluginConfig extends Config {
         return Boat.INTERMEDIATE;
     }
 
+    @ConfigItem(
+            keyName = "closeDoors",
+            name = "Close doors",
+            description = "Close doors if there other nearby inside the fence. During pathing the doors will be closed regardless of this setting",
+            position = 2
+    )
+    default boolean closeDoors() {
+        return true;
+    }
+
     @ConfigSection(
             name = "Fight settings",
             description = "Restock settings",
-            position = 2,
+            position = 3,
             closedByDefault = false
     )
     String fightSettings = "Fight settings";
+
+    @ConfigItem(
+            keyName = "useQuickPrayers",
+            name = "Use quick prayer",
+            description = "Determines whether the plugin should use quick prayers",
+            position = 1,
+            section = fightSettings
+    )
+    default boolean useQuickPrayers() {
+        return false;
+    }
 
     @ConfigItem(
             keyName = "useSpecialAttack",
@@ -30,17 +51,6 @@ public interface AutoPestControlPluginConfig extends Config {
             section = fightSettings
     )
     default boolean useSpecialAttack() {
-        return false;
-    }
-
-    @ConfigItem(
-            keyName = "useQuickPrayers",
-            name = "Use quick prayer",
-            description = "Determines whether the plugin should use quick prayers",
-            position = 2,
-            section = fightSettings
-    )
-    default boolean useQuickPrayers() {
         return false;
     }
 
@@ -62,7 +72,7 @@ public interface AutoPestControlPluginConfig extends Config {
     @ConfigSection(
             name = "Debug settings",
             description = "Debug settings",
-            position = 3,
+            position = 4,
             closedByDefault = true
     )
     String debugSettings = "Debug settings";
