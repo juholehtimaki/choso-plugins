@@ -46,4 +46,21 @@ public enum StunAlcherStunSpell {
         }
         return null;
     }
+
+    public Standard getBestStunSpell(int magicLevel) {
+        if (Standard.STUN.haveRunesForSpell() && Standard.STUN.canCastOnMagicLevel(magicLevel)) {
+            return Standard.STUN;
+        } else if (Standard.ENFEEBLE.haveRunesForSpell() && Standard.ENFEEBLE.canCastOnMagicLevel(magicLevel)) {
+            return Standard.ENFEEBLE;
+        } else if (Standard.VULNERABILITY.haveRunesForSpell() && Standard.VULNERABILITY.canCastOnMagicLevel(magicLevel)) {
+            return Standard.VULNERABILITY;
+        } else if (Standard.CURSE.haveRunesForSpell() && Standard.CURSE.canCastOnMagicLevel(magicLevel)) {
+            return Standard.CURSE;
+        } else if (Standard.WEAKEN.haveRunesForSpell() && Standard.WEAKEN.canCastOnMagicLevel(magicLevel)) {
+            return Standard.WEAKEN;
+        } else if (Standard.CONFUSE.haveRunesForSpell() && Standard.CONFUSE.canCastOnMagicLevel(magicLevel)) {
+            return Standard.CONFUSE;
+        }
+        return null;
+    }
 }

@@ -34,4 +34,13 @@ public enum StunAlcherAlchSpell {
         }
         return null;
     }
+
+    public Standard getBestAlchemySpell(int magicLevel) {
+        if (Standard.HIGH_LEVEL_ALCHEMY.haveRunesForSpell() && Standard.HIGH_LEVEL_ALCHEMY.canCastOnMagicLevel(magicLevel)) {
+            return Standard.HIGH_LEVEL_ALCHEMY;
+        } else if (Standard.HIGH_LEVEL_ALCHEMY.haveRunesForSpell() && Standard.LOW_LEVEL_ALCHEMY.canCastOnMagicLevel(magicLevel)) {
+            return Standard.LOW_LEVEL_ALCHEMY;
+        }
+        return null;
+    }
 }

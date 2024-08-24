@@ -4,6 +4,8 @@ import com.google.inject.Inject;
 import com.google.inject.Provides;
 import com.theplug.PaistiBreakHandler.PaistiBreakHandler;
 import com.theplug.PaistiUtils.API.*;
+import com.theplug.PaistiUtils.API.Potions.BoostPotion;
+import com.theplug.PaistiUtils.API.Potions.Potion;
 import com.theplug.PaistiUtils.Framework.ThreadedScriptRunner;
 import com.theplug.PaistiUtils.PathFinding.WebWalker;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
@@ -94,12 +96,6 @@ public class AutoStunAlcherPlugin extends Plugin {
 
     @Override
     protected void startUp() throws Exception {
-        var paistiUtilsPlugin = pluginManager.getPlugins().stream().filter(p -> p instanceof PaistiUtils).findFirst();
-        if (paistiUtilsPlugin.isEmpty() || !pluginManager.isPluginEnabled(paistiUtilsPlugin.get())) {
-            log.info("AutoStunAlcher: PaistiUtils is required for this plugin to work");
-            pluginManager.setPluginEnabled(this, false);
-            return;
-        }
         keyManager.registerKeyListener(startHotkeyListener);
         overlayManager.add(screenOverlay);
 
@@ -134,6 +130,36 @@ public class AutoStunAlcherPlugin extends Plugin {
         return false;
     }
 
+    private boolean handleMagicBoost() {
+        if (Potion.isPotionOnCooldown()) return false;
+        if (BoostPotion.SATURATED_HEART.isAnyStatBoostBelow(1) && BoostPotion.SATURATED_HEART.drink()) {
+            return true;
+        }
+        if (BoostPotion.IMBUED_HEART.isAnyStatBoostBelow(1) && BoostPotion.IMBUED_HEART.drink()) {
+            return true;
+        }
+        var realSkillLevel = Utility.getRealSkillLevel(Skill.MAGIC);
+        var boostedSkillLevel = Utility.getBoostedSkillLevel(Skill.MAGIC);
+        var currBestAlchemySpell = config.alchSpell().getBestAlchemySpell(boostedSkillLevel);
+        var currBestStunSpell = config.stunSpell().getBestStunSpell(boostedSkillLevel);
+        for (var boostPotion : BoostPotion.values()) {
+            var boost = boostPotion.findBoost(Skill.MAGIC);
+            if (boost == null) continue;
+            if (boost.getBoostAmount() <= 0) continue;
+            var boostedMagicLevel = realSkillLevel + Math.max(boost.getBoostAmount() - 3, 0);
+            if (boostedMagicLevel <= boostedSkillLevel) continue;
+            var newBestAlchemySpell = config.alchSpell().getBestAlchemySpell(boostedMagicLevel);
+            var newBestStunSpell = config.stunSpell().getBestStunSpell(boostedMagicLevel);
+            if (newBestAlchemySpell != null && !newBestAlchemySpell.equals(currBestAlchemySpell) && boostPotion.drink()) {
+                return true;
+            }
+            if (newBestStunSpell != null && !newBestStunSpell.equals(currBestStunSpell) && boostPotion.drink()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void threadedLoop() {
         if (handleTargetLevelReached()) {
             Utility.sleepGaussian(100, 200);
@@ -154,6 +180,10 @@ public class AutoStunAlcherPlugin extends Plugin {
             return;
         }
         if (handleRandomMiniAfk()) {
+            Utility.sleepGaussian(100, 200);
+            return;
+        }
+        if (handleMagicBoost()) {
             Utility.sleepGaussian(100, 200);
             return;
         }
@@ -290,6 +320,7 @@ public class AutoStunAlcherPlugin extends Plugin {
         var bestTarget = possibleTargets.get(0);
         if (stunSpell.castOnNpc(bestTarget)) {
             stunCastOnTick = Utility.getTickCount();
+            Utility.sleepOneTick();
             return true;
         }
         return false;
