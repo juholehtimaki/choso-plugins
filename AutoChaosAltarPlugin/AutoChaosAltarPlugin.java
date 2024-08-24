@@ -7,6 +7,7 @@ import com.theplug.PaistiUtils.API.*;
 import com.theplug.PaistiUtils.API.Loadouts.InventoryLoadout;
 import com.theplug.PaistiUtils.Framework.ThreadedScriptRunner;
 import com.theplug.PaistiUtils.PathFinding.LocalPathfinder;
+import com.theplug.PaistiUtils.PathFinding.RunescapeBank;
 import com.theplug.PaistiUtils.PathFinding.WebWalker;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +17,7 @@ import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.kit.KitType;
+import net.runelite.api.widgets.ComponentID;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.config.Keybind;
 import net.runelite.client.eventbus.EventBus;
@@ -32,7 +34,7 @@ import java.time.Instant;
 
 
 @Slf4j
-@PluginDescriptor(name = "AutoChaosAltar", description = "Automates chaos altar", enabledByDefault = false, tags = {"paisti", "choso", "chaos altar", "prayer"})
+@PluginDescriptor(name = "<HTML><FONT COLOR=#1BB532>AutoChaosAltar</FONT></HTML>", description = "Automates chaos altar", enabledByDefault = false, tags = {"paisti", "choso", "chaos altar", "prayer"})
 public class AutoChaosAltarPlugin extends Plugin {
     @Inject
     public AutoChaosAltarPluginConfig config;
@@ -95,12 +97,6 @@ public class AutoChaosAltarPlugin extends Plugin {
 
     @Override
     protected void startUp() throws Exception {
-        var paistiUtilsPlugin = pluginManager.getPlugins().stream().filter(p -> p instanceof PaistiUtils).findFirst();
-        if (paistiUtilsPlugin.isEmpty() || !pluginManager.isPluginEnabled(paistiUtilsPlugin.get())) {
-            log.info("AutoChaosAltar: PaistiUtils is required for this plugin to work");
-            pluginManager.setPluginEnabled(this, false);
-            return;
-        }
         keyManager.registerKeyListener(startHotkeyListener);
         overlayManager.add(screenOverlay);
 
@@ -109,10 +105,6 @@ public class AutoChaosAltarPlugin extends Plugin {
             return null;
         });
 
-        runner.setOnGameTickAction(() -> {
-            this.threadedOnGameTick();
-            return null;
-        });
 
         paistiBreakHandler.registerPlugin(this);
     }
@@ -150,18 +142,24 @@ public class AutoChaosAltarPlugin extends Plugin {
         if (!isInWilderness()) return false;
         var bone = Inventory.search().nameContains("bones").first();
         if (bone.isEmpty()) return false;
+
+        var path = WebWalker.walkingPath.get();
+        if (path != null && !path.isEmpty() && path.get(path.size() - 1).getDestination().distanceTo(RunescapeBank.FEROX_ENCLAVE.getLocation()) < 15)
+            return false;
+
         boolean shouldHop = Boolean.TRUE.equals(Utility.runOnClientThread(() -> {
             var players = PaistiUtils.getClient().getPlayers();
             return players.stream().anyMatch(p ->
                     !p.equals(PaistiUtils.getClient().getLocalPlayer())
-                            && p.getWorldLocation().distanceTo(Walking.getPlayerLocation()) <= 12
+                            && p.getWorldLocation().distanceTo(Walking.getPlayerLocation()) <= 15
                             && isWithinAttackRange(p.getCombatLevel())
                             && hasGear(p));
         }));
 
         if (shouldHop) {
             Utility.sendGameMessage("Player nearby. Hopping worlds.", "AutoChaosAltar");
-            return Worldhopping.hopToNext(false);
+            Worldhopping.tryHopToNext(false);
+            return true;
         }
         return false;
     }
@@ -223,6 +221,14 @@ public class AutoChaosAltarPlugin extends Plugin {
     private boolean handleUnnoting() {
         if (!shouldUnnoteBones()) return false;
 
+        // Pre-open world hopper
+        Utility.runOnClientThread(() -> {
+            if (PaistiUtils.getClient().getWidget(ComponentID.WORLD_SWITCHER_WORLD_LIST) == null) {
+                PaistiUtils.getClient().openWorldHopper();
+            }
+            return null;
+        });
+
         var elderChaosDruid = NPCs.search().withName("Elder Chaos druid").first();
         if (elderChaosDruid.isEmpty()) return false;
 
@@ -254,6 +260,18 @@ public class AutoChaosAltarPlugin extends Plugin {
         if (altar.isPresent() && altar.get().getWorldLocation().distanceTo(Walking.getPlayerLocation()) == 1) {
             return false;
         }
+
+        if (Bank.isOpen()) {
+            Bank.closeBank();
+            Utility.sleepUntilCondition(() -> !Bank.isOpen(), 2000, 300);
+        }
+        // Pre-open world hopper
+        Utility.runOnClientThread(() -> {
+            if (PaistiUtils.getClient().getWidget(ComponentID.WORLD_SWITCHER_WORLD_LIST) == null) {
+                PaistiUtils.getClient().openWorldHopper();
+            }
+            return null;
+        });
         return WebWalker.walkToExact(CHAOS_ALTAR_LOCATION.dy(Utility.random(0, 1)));
     }
 
@@ -351,16 +369,6 @@ public class AutoChaosAltarPlugin extends Plugin {
         loadout = InventoryLoadout.InventoryLoadoutSetup.deserializeFromString(config.inventoryLoadout());
     }
 
-    private void threadedOnGameTick() {
-        if (handleHopOnPlayerNearby() && Utility.getRealSkillLevel(Skill.PRAYER) < config.targetLevel()) {
-            Utility.sendGameMessage("Hopping", "AutoChaosAltar");
-            Utility.sleepGaussian(1200, 1800);
-            Utility.sleepUntilCondition(Utility::isLoggedIn, 10000, 1200);
-        }
-        Utility.sleepGaussian(200, 300);
-    }
-
-
     public void stop() {
         if (Utility.isLoggedIn()) {
             Utility.sendGameMessage("Stopped", "AutoChaosAltar");
@@ -374,6 +382,10 @@ public class AutoChaosAltarPlugin extends Plugin {
         if (!isRunning()) return;
 
         runner.onGameTick();
+
+        if (Utility.getRealSkillLevel(Skill.PRAYER) < config.targetLevel() && handleHopOnPlayerNearby()) {
+            log.info("Player nearby, hopping worlds");
+        }
     }
 
     public Duration getRunTimeDuration() {
