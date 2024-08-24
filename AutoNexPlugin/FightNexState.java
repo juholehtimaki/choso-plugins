@@ -1,5 +1,6 @@
 package com.theplug.AutoNexPlugin;
 
+import com.theplug.DontObfuscate;
 import com.theplug.PaistiUtils.API.*;
 import com.theplug.PaistiUtils.API.NPCTickSimulation.NPCTickSimulation;
 import com.theplug.PaistiUtils.API.Potions.BoostPotion;
@@ -28,6 +29,7 @@ import static com.theplug.PaistiUtils.API.Potions.Potion.dosePattern;
 
 
 @Slf4j
+@DontObfuscate
 public class FightNexState implements State {
     AutoNexPlugin plugin;
 
@@ -806,13 +808,6 @@ public class FightNexState implements State {
                 pickedUpLoot = true;
                 Utility.sleepGaussian(300, 600);
             }
-            try {
-                var price = (double) groundItem.getStackGePrice() / 1000000;
-                String formattedPrice = String.format("%.1f", price) + "m";
-                DiscordNexWebhook.sendToDiscord("Someone just received a valuable drop at Nex: **" + groundItem.getName() + "** worth **" + formattedPrice + "**.");
-            } catch (Exception e) {
-                log.error("Error sending AutoNex discord webhook message", e);
-            }
         }
         return pickedUpLoot;
     }
@@ -1102,6 +1097,21 @@ public class FightNexState implements State {
     }
 
     @Subscribe
+    public void onItemSpawned(ItemSpawned e) {
+        if (!plugin.isRunning()) return;
+        var price = PaistiUtils.getInstance().getItemManager().getItemPrice(e.getItem().getId());
+        if (price > 1000000) {
+            final ItemComposition itemComposition = PaistiUtils.getInstance().getItemManager().getItemComposition(e.getItem().getId());
+            try {
+                String formattedPrice = String.format("%.1f", (double) price / 1000000) + "m";
+                DiscordWebhook.sendToNexDiscord("Someone just received a valuable drop at Nex: **" + itemComposition.getName() + "** worth **" + formattedPrice + "**.");
+            } catch (Exception err) {
+                log.error("Error sending AutoNex discord webhook message", err);
+            }
+        }
+    }
+
+    @Subscribe
     public void onGameObjectDespawned(GameObjectDespawned e) {
         if (e.getGameObject().getId() == 42942) {
             synchronized (dangerousTilesLock) {
@@ -1208,8 +1218,11 @@ public class FightNexState implements State {
     }
 
     @Subscribe
-    private void onChatMessage(ChatMessage event) {
-        if (event.getType() != ChatMessageType.GAMEMESSAGE) return;
+    public void onChatMessage(ChatMessage event) {
+        // Might change to 116 once there's enum for that
+        log.debug("AutoNex chat message: " + event.getMessage() + ", type: " + event.getType());
+        if (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.UNKNOWN && event.getType() != ChatMessageType.NPC_SAY)
+            return;
 
         // NEX PHASES
         if (event.getMessage().toLowerCase().contains(SMOKE_PHASE_MESSAGE.toLowerCase())) {
