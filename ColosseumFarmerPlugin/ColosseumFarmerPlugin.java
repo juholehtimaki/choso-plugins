@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 
 @Slf4j
-@PluginDescriptor(name = "ColosseumFarmer", description = "Farms first colosseum wave", enabledByDefault = false, tags = {"paisti", "choso", "colosseum"})
+@PluginDescriptor(name = "<HTML><FONT COLOR=#1BB532>ColosseumFarmer</FONT></HTML>", description = "Farms first colosseum wave", enabledByDefault = false, tags = {"paisti", "choso", "colosseum"})
 public class ColosseumFarmerPlugin extends Plugin {
     @Inject
     public ColosseumFarmerPluginConfig config;
@@ -128,12 +128,6 @@ public class ColosseumFarmerPlugin extends Plugin {
 
     @Override
     protected void startUp() throws Exception {
-        var paistiUtilsPlugin = pluginManager.getPlugins().stream().filter(p -> p instanceof PaistiUtils).findFirst();
-        if (paistiUtilsPlugin.isEmpty() || !pluginManager.isPluginEnabled(paistiUtilsPlugin.get())) {
-            log.info("ColosseumFarmer: PaistiUtils is required for this plugin to work");
-            pluginManager.setPluginEnabled(this, false);
-            return;
-        }
         keyManager.registerKeyListener(startHotkeyListener);
         overlayManager.add(sceneOverlay);
         overlayManager.add(screenOverlay);

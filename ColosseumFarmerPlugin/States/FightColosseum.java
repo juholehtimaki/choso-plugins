@@ -223,7 +223,7 @@ public class FightColosseum implements State {
             var relevantNpcs = NPCs.search().withinDistance(20).result();
 
             var _tickSimulation = new NPCTickSimulation(client, plugin.attackTickTracker, relevantNpcs);
-            _tickSimulation.getPlayerState().setInteracting(client.getLocalPlayer().getInteracting());
+            _tickSimulation.getPlayerState().setInteracting(plugin.attackTickTracker.getPredictedInteractionTarget());
             List<NPCTickSimulation.PrayAgainstResult> prayThisTick = new ArrayList<>();
 
             _tickSimulation.simulateNpcsTick(client);
