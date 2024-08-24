@@ -7,7 +7,7 @@ import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
 import com.theplug.SES.PluginId;
-import com.theplug.SES.SessionGuard;
+import com.theplug.SES.SG;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.config.ConfigManager;
@@ -22,7 +22,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
-@PluginDescriptor(name = "PAutoItemCombiner", description = "Combines specified items while bankstanding", enabledByDefault = false, tags = {"paisti", "skilling"})
+@PluginDescriptor(name = "<HTML><FONT COLOR=#1BB532>PAutoItemCombiner</FONT></HTML>", description = "Combines specified items while bankstanding", enabledByDefault = false, tags = {"paisti", "skilling"})
 public class AutoItemCombinerPlugin extends Plugin {
     @Inject
     AutoItemCombinerConfig config;
@@ -31,7 +31,7 @@ public class AutoItemCombinerPlugin extends Plugin {
     @Inject
     private KeyManager keyManager;
     ThreadedScriptRunner runner = new ThreadedScriptRunner();
-    SessionGuard sessionGuard = new SessionGuard(PluginId.PAUTOITEMCOMBINER, runner);
+    SG SG = new SG(PluginId.PAUTOITEMCOMBINER, runner);
     @Inject
     PaistiBreakHandler paistiBreakHandler;
 
@@ -40,7 +40,7 @@ public class AutoItemCombinerPlugin extends Plugin {
         public final int withdrawCount;
 
         public WithdrawItemSetting(String itemNameOrId, int withdrawCount) {
-            this.itemNameOrId = itemNameOrId;
+            this.itemNameOrId = itemNameOrId.trim();
             this.withdrawCount = withdrawCount;
         }
     }
@@ -68,13 +68,6 @@ public class AutoItemCombinerPlugin extends Plugin {
 
     @Override
     protected void startUp() throws Exception {
-        var paistiUtilsPlugin = pluginManager.getPlugins().stream().filter(p -> p instanceof PaistiUtils).findFirst();
-        if (paistiUtilsPlugin.isEmpty() || !pluginManager.isPluginEnabled(paistiUtilsPlugin.get())) {
-            log.info("PAutoItemCombiner: PaistiUtils is required for this plugin to work");
-            pluginManager.setPluginEnabled(this, false);
-            return;
-        }
-
         runner.setLoopAction(() -> {
             this.threadedLoop();
             return null;
@@ -195,7 +188,7 @@ public class AutoItemCombinerPlugin extends Plugin {
                 }
                 if (!isOnlyDigits) {
                     String cleanName = Widgets.getCleanName(i);
-                    if (cleanName != null && cleanName.toLowerCase().contains(withdrawItemSetting.itemNameOrId.toLowerCase())) {
+                    if (cleanName != null && cleanName.equalsIgnoreCase(withdrawItemSetting.itemNameOrId)) {
                         return false;
                     }
                 }
@@ -253,7 +246,7 @@ public class AutoItemCombinerPlugin extends Plugin {
                 return item.get();
             }
         } else {
-            var item = Inventory.search().matchesWildCardNoCase(config.firstItemNameOrId()).first();
+            var item = Inventory.search().withName(config.firstItemNameOrId()).first();
             if (item.isPresent()) {
                 return item.get();
             }
@@ -278,7 +271,7 @@ public class AutoItemCombinerPlugin extends Plugin {
             }
         } else {
             var item = Inventory.search()
-                    .matchesWildCardNoCase(config.secondItemNameOrId())
+                    .withName(config.secondItemNameOrId())
                     .result()
                     .stream().min(Comparator.comparingInt(i -> lastTargetedSecondItemIndexes.contains(i.getIndex()) ? 1 : 0));
             if (item.isPresent()) {
@@ -355,8 +348,11 @@ public class AutoItemCombinerPlugin extends Plugin {
 
     private void threadedLoop() {
         if (!Utility.isLoggedIn()) {
-            stop();
-            return;
+            if (!Utility.sleepUntilCondition(Utility::isLoggedIn, 10000, 300)) {
+                log.info("Player is not logged in, stopping");
+                stop();
+                return;
+            }
         }
         if (handleCombining()) {
             if (!config.spamCombine()) {
@@ -371,7 +367,7 @@ public class AutoItemCombinerPlugin extends Plugin {
             Utility.sleepGaussian(2000, 3000);
             paistiBreakHandler.startBreak(this);
             Utility.sleepGaussian(1000, 2000);
-            Utility.sleepUntilCondition(() -> !paistiBreakHandler.isBreakActive(this) && Utility.isLoggedIn(), 99999999, 5000);
+            Utility.sleepUntilCondition(() -> !paistiBreakHandler.isBreakActive(this), 99999999, 5000);
             return;
         }
         if (handleBanking()) {
