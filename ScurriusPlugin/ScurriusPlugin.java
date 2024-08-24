@@ -34,7 +34,7 @@ import java.util.List;
 
 
 @Slf4j
-@PluginDescriptor(name = "AutoScurrius", description = "Automates Scurrius", enabledByDefault = false, tags = {"paisti", "choso", "scurrius"})
+@PluginDescriptor(name = "<HTML><FONT COLOR=#1BB532>AutoScurrius</FONT></HTML>", description = "Automates Scurrius", enabledByDefault = false, tags = {"paisti", "choso", "scurrius"})
 public class ScurriusPlugin extends Plugin {
     @Inject
     public ScurriusPluginConfig config;
@@ -79,6 +79,7 @@ public class ScurriusPlugin extends Plugin {
     private int totalKillCount = 0;
 
     public static final WorldPoint SCURRIUS_ENTRANCE_WORLD_POINT = new WorldPoint(3276, 9871, 0);
+
     @Provides
     public ScurriusPluginConfig getConfig(ConfigManager configManager) {
         return configManager.getConfig(ScurriusPluginConfig.class);
@@ -112,12 +113,6 @@ public class ScurriusPlugin extends Plugin {
 
     @Override
     protected void startUp() throws Exception {
-        var paistiUtilsPlugin = pluginManager.getPlugins().stream().filter(p -> p instanceof PaistiUtils).findFirst();
-        if (paistiUtilsPlugin.isEmpty() || !pluginManager.isPluginEnabled(paistiUtilsPlugin.get())) {
-            log.info("AutoScurrius: PaistiUtils is required for this plugin to work");
-            pluginManager.setPluginEnabled(this, false);
-            return;
-        }
         keyManager.registerKeyListener(startHotkeyListener);
         overlayManager.add(sceneOverlay);
         overlayManager.add(screenOverlay);
@@ -136,13 +131,21 @@ public class ScurriusPlugin extends Plugin {
     }
 
     private void threadedLoop() {
+        if (!Utility.isLoggedIn()) {
+            if (!Utility.sleepUntilCondition(Utility::isLoggedIn, 10000, 600)) {
+                Utility.sendGameMessage("Not logged in, stopping.", "AutoScurrius");
+                stop();
+            }
+            Utility.sleepGaussian(600, 700);
+        }
+
         for (var state : states) {
             if (state.shouldExecuteState()) {
                 state.threadedLoop();
                 return;
             }
         }
-        Utility.sleepGaussian(100, 200);
+        Utility.sleepGaussian(60, 100);
     }
 
     @Override
@@ -217,7 +220,6 @@ public class ScurriusPlugin extends Plugin {
     }
 
     public boolean isInsideScurriusArea() {
-        var bloodObj = TileObjects.search().withId(654).first();
-        return bloodObj.isPresent() && Utility.isInInstancedRegion();
+        return Utility.isInInstancedRegion() && TileObjects.search().withId(14204).first().isPresent();
     }
 }

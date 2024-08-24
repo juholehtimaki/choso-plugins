@@ -107,9 +107,24 @@ public interface ScurriusPluginConfig extends Config {
     }
 
     @ConfigItem(
+            keyName = "reducePrayerFlicking",
+            name = "Reduce pray flicking",
+            description = "Reduces prayer flicking by not lazy-flicking as effectively.",
+            position = 9,
+            section = fightSettings
+    )
+    @Range(
+            min = 1,
+            max = 15
+    )
+    default boolean reducePrayerFlicking() {
+        return true;
+    }
+
+    @ConfigItem(
             keyName = "prioGiantRats",
-            name = "Prio Giant rats",
-            description = "Prioritize giant rats for max xp",
+            name = "Prio giant rats",
+            description = "Prioritize giant rats",
             position = 10,
             section = fightSettings
     )

@@ -59,8 +59,10 @@ public class FightScurriusState implements State {
     static final String ALREADY_ATE_RATS_FOOD_MESSAGE = "you ate from the food pile recently";
     private final AtomicReference<Integer> ateRatsFoodsOnTick = new AtomicReference<>(-1);
     private final AtomicReference<Integer> killedGiantRatsOnTick = new AtomicReference<>(-1);
-    private Set<Integer> lootedItemIdsToAlch;
+    private final Set<Integer> lootedItemIdsToAlch;
     private int highAlchCastOnTick = -1;
+    private final AtomicReference<Integer> offensivePrayerNotNeededForTicks = new AtomicReference<>(-1);
+    private final AtomicReference<Integer> defensivePrayerNotNeededForTicks = new AtomicReference<>(-1);
 
     private static final List<PPrayer> offensivePrayers = List.of(
             PPrayer.RIGOUR,
@@ -147,6 +149,7 @@ public class FightScurriusState implements State {
     }
 
     private boolean shouldAlchItem(PGroundItem groundItem) {
+        if (!Standard.HIGH_LEVEL_ALCHEMY.canCast()) return false;
         if (groundItem.getName().toLowerCase().contains("spine")) return false;
         if (groundItem.getSingleItemHaPrice() > 1000) {
             return true;
@@ -265,7 +268,7 @@ public class FightScurriusState implements State {
         var potionsToDrink = Utility.runOnClientThread(() -> Arrays.stream(BoostPotion.values()).filter(potion -> {
             if (potion.findBoost(Skill.PRAYER) != null) return false;
             if (potion.findInInventory().isEmpty()) return false;
-            return potion.isAnyCurrentBoostBelow(config.drinkPotionsBelowBoost());
+            return potion.isAnyStatBoostBelow(config.drinkPotionsBelowBoost());
         }).collect(Collectors.toList()));
 
         if (potionsToDrink == null || potionsToDrink.isEmpty()) return false;
@@ -366,8 +369,7 @@ public class FightScurriusState implements State {
             return true;
         }
 
-        var boostPotionDoses = Arrays.stream(BoostPotion.values()).mapToInt(BoostPotion::getTotalDosesInInventory).sum();
-
+        var boostPotionDoses = Arrays.stream(BoostPotion.values()).filter(b -> Arrays.stream(b.getBoosts()).noneMatch(boost -> boost.getSkill() == Skill.PRAYER)).mapToInt(BoostPotion::getTotalDosesInInventory).sum();
         if (boostPotionDoses < config.bankUnderBoostDoseAmount()) {
             if (printMessages)
                 Utility.sendGameMessage(String.format("Banking because boost potion doses left (%d) is less than the configured %d", boostPotionDoses, config.bankUnderBoostDoseAmount()), "AutoScurrius");
@@ -433,13 +435,19 @@ public class FightScurriusState implements State {
         }
     }
 
+    private boolean handleToggleRun() {
+        if (Walking.isRunEnabled() || Walking.getRunEnergy() < 15) return false;
+        return Walking.setRun(true);
+    }
+
     private boolean shouldLootItem(PGroundItem item) {
-        return shouldEatItem(item) || item.getName().contains("spine") || item.getStackGePrice() > config.lootItemsAboveValue();
+        return shouldEatItem(item) || item.getName().contains("spine") || item.getName().toLowerCase().contains("long bone") || item.getName().toLowerCase().contains("curved bone") || item.getStackGePrice() > config.lootItemsAboveValue();
     }
 
     private boolean handleRegularLooting() {
         var target = getTarget();
         if (target != null && !target.isDead()) return false;
+        handleVialDropping();
         var groundItems = TileItems.search().result().stream().filter(this::shouldLootItem).sorted(Comparator.comparingInt(itm -> -Math.max(itm.getStackGePrice(), itm.getStackHaPrice()))).sorted(Comparator.comparingInt(itm -> {
             if (itm.getName().contains("spine")) {
                 return 0;
@@ -461,6 +469,14 @@ public class FightScurriusState implements State {
             if (Inventory.getEmptySlots() <= 1) {
                 if (!groundItem.isStackable() || Inventory.search().withId(groundItem.getId()).first().isEmpty()) {
                     if (Inventory.isFull() || (!shouldAlchItem(groundItem) && !shouldEatItem(groundItem))) {
+                        if (groundItem.getId() == ItemID.SCURRIUS_SPINE) {
+                            var itemToDrop = Inventory.search().filter(i -> PaistiUtils.getInstance().getFoodStats().getHealAmount(i.getItemId()) >= 4).first();
+                            if (itemToDrop.isPresent() && Utility.getItemMaxPrice(itemToDrop.get().getItemId()) < 10000) {
+                                Interaction.clickWidget(itemToDrop.get(), "Drop");
+                                Utility.sleepUntilCondition(() -> Inventory.getEmptySlots() > 1, 1200, 300);
+                            }
+                        }
+
                         continue;
                     }
                 }
@@ -499,7 +515,7 @@ public class FightScurriusState implements State {
         if (Utility.getTickCount() - scurriusDiedOnTick.get() < 5) {
             return false;
         }
-        if (Utility.getBoostedSkillLevel(Skill.HITPOINTS) >= Utility.getRealSkillLevel(Skill.HITPOINTS) - 30) {
+        if (Utility.getBoostedSkillLevel(Skill.HITPOINTS) >= Utility.getRealSkillLevel(Skill.HITPOINTS) * 0.6) {
             return false;
         }
         var ratFood = TileObjects.search().withName("Food pile").withAction("Eat").reachable().nearestToPlayer();
@@ -555,32 +571,32 @@ public class FightScurriusState implements State {
     private void simulateAndSetPrayers() {
         var mostImportantPray = getMostImportantPrayer();
         boolean didPray = false;
-        log.debug("simulateAndSetPrayers");
         if (mostImportantPray == null) {
-            if (PPrayer.PROTECT_FROM_MELEE.isActive() && PPrayer.PROTECT_FROM_MELEE.setEnabledWithoutClicks(false)) {
-                log.debug("Disabled melee prayer {}, {}", Utility.getTickCount(), Utility.getMsSinceStartOfTick());
-            } else if (PPrayer.PROTECT_FROM_MISSILES.isActive() && PPrayer.PROTECT_FROM_MISSILES.setEnabledWithoutClicks(false)) {
-                log.debug("Disabled ranged prayer {}, {}", Utility.getTickCount(), Utility.getMsSinceStartOfTick());
-            } else if (PPrayer.PROTECT_FROM_MAGIC.isActive() && PPrayer.PROTECT_FROM_MAGIC.setEnabledWithoutClicks(false)) {
-                log.debug("Disabled magic prayer {}, {}", Utility.getTickCount(), Utility.getMsSinceStartOfTick());
+            defensivePrayerNotNeededForTicks.accumulateAndGet(1, Integer::sum);
+            if (!plugin.config.reducePrayerFlicking()
+                    || defensivePrayerNotNeededForTicks.get() >= 4) {
+                PPrayer.disableDefensivePrayers();
             }
         } else {
             switch (mostImportantPray.getAttackType()) {
                 case MELEE:
-                    didPray = !PPrayer.PROTECT_FROM_MELEE.isActive() && PPrayer.PROTECT_FROM_MELEE.setEnabledWithoutClicks(true);
+                    didPray = !PPrayer.PROTECT_FROM_MELEE.isActive() && PPrayer.PROTECT_FROM_MELEE.setEnabled(true);
                     if (didPray) {
+                        defensivePrayerNotNeededForTicks.set(0);
                         log.debug("Enabled melee prayer {}, {}", Utility.getTickCount(), Utility.getMsSinceStartOfTick());
                     }
                     break;
                 case MAGIC:
-                    didPray = !PPrayer.PROTECT_FROM_MAGIC.isActive() && PPrayer.PROTECT_FROM_MAGIC.setEnabledWithoutClicks(true);
+                    didPray = !PPrayer.PROTECT_FROM_MAGIC.isActive() && PPrayer.PROTECT_FROM_MAGIC.setEnabled(true);
                     if (didPray) {
+                        defensivePrayerNotNeededForTicks.set(0);
                         log.debug("Enabled magic prayer {}, {}", Utility.getTickCount(), Utility.getMsSinceStartOfTick());
                     }
                     break;
                 case RANGED:
-                    didPray = !PPrayer.PROTECT_FROM_MISSILES.isActive() && PPrayer.PROTECT_FROM_MISSILES.setEnabledWithoutClicks(true);
+                    didPray = !PPrayer.PROTECT_FROM_MISSILES.isActive() && PPrayer.PROTECT_FROM_MISSILES.setEnabled(true);
                     if (didPray) {
+                        defensivePrayerNotNeededForTicks.set(0);
                         log.debug("Enabled ranged prayer {}, {}", Utility.getTickCount(), Utility.getMsSinceStartOfTick());
                     }
                     break;
@@ -594,7 +610,7 @@ public class FightScurriusState implements State {
             var relevantNpcs = NPCs.search().withinDistance(17).result();
 
             var _tickSimulation = new NPCTickSimulation(client, plugin.attackTickTracker, relevantNpcs);
-            _tickSimulation.getPlayerState().setInteracting(client.getLocalPlayer().getInteracting());
+            _tickSimulation.getPlayerState().setInteracting(plugin.attackTickTracker.getPredictedInteractionTarget());
             List<NPCTickSimulation.PrayAgainstResult> prayThisTick = new ArrayList<>();
 
             _tickSimulation.simulateNpcsTick(client);
@@ -624,22 +640,24 @@ public class FightScurriusState implements State {
         if (defensivePrayer.get() == null && scurriusPose != 10689) {
             simulateAndSetPrayers();
         } else if (defensivePrayer.get() != null) {
-            defensivePrayer.get().setEnabledWithoutClicks(true);
+            defensivePrayer.get().setEnabled(true);
+            defensivePrayerNotNeededForTicks.set(0);
         } else {
-            if (PPrayer.PROTECT_FROM_MELEE.isActive() && PPrayer.PROTECT_FROM_MELEE.setEnabledWithoutClicks(false)) {
-                log.debug("Disabled melee prayer {}, {}", Utility.getTickCount(), Utility.getMsSinceStartOfTick());
-            } else if (PPrayer.PROTECT_FROM_MISSILES.isActive() && PPrayer.PROTECT_FROM_MISSILES.setEnabledWithoutClicks(false)) {
-                log.debug("Disabled ranged prayer {}, {}", Utility.getTickCount(), Utility.getMsSinceStartOfTick());
-            } else if (PPrayer.PROTECT_FROM_MAGIC.isActive() && PPrayer.PROTECT_FROM_MAGIC.setEnabledWithoutClicks(false)) {
-                log.debug("Disabled magic prayer {}, {}", Utility.getTickCount(), Utility.getMsSinceStartOfTick());
+            defensivePrayerNotNeededForTicks.accumulateAndGet(1, Integer::sum);
+            if (!plugin.config.reducePrayerFlicking()
+                    || defensivePrayerNotNeededForTicks.get() >= 4) {
+                PPrayer.disableDefensivePrayers();
             }
         }
     }
 
     private void setOffensivePrayers() {
-        if (Utility.getInteractionTarget() instanceof NPC) {
+        if (plugin.attackTickTracker.getPredictedInteractionTarget() instanceof NPC
+                || Utility.getInteractionTarget() instanceof NPC) {
             var npc = (NPC) Utility.getInteractionTarget();
-            if (!npc.isDead() && plugin.attackTickTracker.getTicksUntilNextAttack() <= 1) {
+            if (npc == null) npc = (NPC) plugin.attackTickTracker.getPredictedInteractionTarget();
+            if (npc != null && !npc.isDead() && plugin.attackTickTracker.getTicksUntilNextAttack() <= 1) {
+                offensivePrayerNotNeededForTicks.set(0);
                 if (config.combatStyle() == CombatStyle.RANGE) {
                     enableOffensiveRangePray(false);
                     return;
@@ -653,14 +671,19 @@ public class FightScurriusState implements State {
             }
         }
 
-        disableAllOffensivePrayers();
+        offensivePrayerNotNeededForTicks.accumulateAndGet(1, Integer::sum);
+        if (!plugin.config.reducePrayerFlicking()
+                || offensivePrayerNotNeededForTicks.get() >= 5
+        ) {
+            disableAllOffensivePrayers();
+        }
     }
 
     private boolean disableAllOffensivePrayers() {
         var didDisable = false;
         for (var prayer : offensivePrayers) {
             if (prayer.isActive()) {
-                prayer.setEnabledWithoutClicks(false);
+                prayer.setEnabled(false);
                 didDisable = true;
                 Utility.sleepGaussian(10, 30);
             }
@@ -672,18 +695,18 @@ public class FightScurriusState implements State {
     private boolean enableOffensiveRangePray(boolean allowThickSkin) {
         if (PPrayer.RIGOUR.canUse()) {
             if (!PPrayer.RIGOUR.isActive()) {
-                PPrayer.RIGOUR.setEnabledWithoutClicks(true);
+                PPrayer.RIGOUR.setEnabled(true);
                 return true;
             }
         } else {
             var toggled = false;
             if (!PPrayer.EAGLE_EYE.isActive()) {
-                toggled = PPrayer.EAGLE_EYE.setEnabledWithoutClicks(true);
+                toggled = PPrayer.EAGLE_EYE.setEnabled(true);
             }
             if (allowThickSkin) {
                 if (!PPrayer.STEEL_SKIN.isActive()) {
                     if (toggled) Utility.sleepGaussian(10, 30);
-                    toggled = PPrayer.STEEL_SKIN.setEnabledWithoutClicks(true) || toggled;
+                    toggled = PPrayer.STEEL_SKIN.setEnabled(true) || toggled;
                 }
             }
             return toggled;
@@ -694,18 +717,18 @@ public class FightScurriusState implements State {
     private boolean enableOffensiveMagePray(boolean allowThickSkin) {
         if (PPrayer.AUGURY.canUse()) {
             if (!PPrayer.AUGURY.isActive()) {
-                PPrayer.AUGURY.setEnabledWithoutClicks(true);
+                PPrayer.AUGURY.setEnabled(true);
                 return true;
             }
         } else {
             var toggled = false;
             if (!PPrayer.MYSTIC_MIGHT.isActive()) {
-                toggled = PPrayer.MYSTIC_MIGHT.setEnabledWithoutClicks(true);
+                toggled = PPrayer.MYSTIC_MIGHT.setEnabled(true);
             }
             if (allowThickSkin) {
                 if (!PPrayer.STEEL_SKIN.isActive()) {
                     if (toggled) Utility.sleepGaussian(10, 30);
-                    toggled = PPrayer.STEEL_SKIN.setEnabledWithoutClicks(true) || toggled;
+                    toggled = PPrayer.STEEL_SKIN.setEnabled(true) || toggled;
                 }
             }
             return toggled;
@@ -716,27 +739,27 @@ public class FightScurriusState implements State {
     private boolean enableOffensiveMeleePray(boolean allowThickSkin) {
         if (PPrayer.PIETY.canUse()) {
             if (!PPrayer.PIETY.isActive()) {
-                PPrayer.PIETY.setEnabledWithoutClicks(true);
+                PPrayer.PIETY.setEnabled(true);
                 return true;
             }
         } else if (PPrayer.CHIVALRY.canUse()) {
             if (!PPrayer.CHIVALRY.isActive()) {
-                PPrayer.CHIVALRY.setEnabledWithoutClicks(true);
+                PPrayer.CHIVALRY.setEnabled(true);
                 return true;
             }
         } else {
             var toggled = false;
             if (!PPrayer.ULTIMATE_STRENGTH.isActive()) {
-                toggled = PPrayer.ULTIMATE_STRENGTH.setEnabledWithoutClicks(true);
+                toggled = PPrayer.ULTIMATE_STRENGTH.setEnabled(true);
             }
             if (!PPrayer.INCREDIBLE_REFLEXES.isActive()) {
                 if (toggled) Utility.sleepGaussian(10, 30);
-                toggled = PPrayer.INCREDIBLE_REFLEXES.setEnabledWithoutClicks(true) || toggled;
+                toggled = PPrayer.INCREDIBLE_REFLEXES.setEnabled(true) || toggled;
             }
             if (allowThickSkin) {
                 if (!PPrayer.STEEL_SKIN.isActive()) {
                     if (toggled) Utility.sleepGaussian(10, 30);
-                    toggled = PPrayer.STEEL_SKIN.setEnabledWithoutClicks(true) || toggled;
+                    toggled = PPrayer.STEEL_SKIN.setEnabled(true) || toggled;
                 }
             }
             return toggled;
@@ -838,7 +861,7 @@ public class FightScurriusState implements State {
     }
 
     private boolean handleRingOfDuelingRestock() {
-        var ringOfDueling = Inventory.search().matchesWildCardNoCase("ring of dueling*").first();
+        var ringOfDueling = Inventory.search().matchesWildcard("ring of dueling*").first();
         if (ringOfDueling.isEmpty()) {
             Utility.sendGameMessage("Stopping because no ring of dueling found", "AutoScurrius");
             plugin.stop();
@@ -860,12 +883,30 @@ public class FightScurriusState implements State {
     }
 
     private Actor getTarget() {
-        var scurrius = getScurrius();
-        if (scurrius != null && !scurrius.isDead()) {
-            return scurrius;
+        Actor target = null;
+        if (config.prioGiantRats()) {
+            var giantRat = NPCs.search().withName("Giant rat").alive().nearestToPlayer();
+            if (giantRat.isPresent()) {
+                target = giantRat.get();
+            }
         }
-        var giantRat = NPCs.search().withName("Giant rat").alive().nearestToPlayer();
-        return giantRat.orElse(null);
+        if (target == null) {
+            var scurrius = getScurrius();
+            if (scurrius != null && !scurrius.isDead()) {
+                target = scurrius;
+            }
+        }
+        if (target == null) {
+            var giantRat = NPCs.search().withName("Giant rat").alive().nearestToPlayer();
+            target = giantRat.orElse(null);
+        }
+
+        if (target == null) {
+            offensivePrayerNotNeededForTicks.set(999);
+            defensivePrayerNotNeededForTicks.set(999);
+        }
+
+        return target;
     }
 
     private boolean handleAttacking() {
@@ -936,6 +977,10 @@ public class FightScurriusState implements State {
         return plugin.isInsideScurriusArea();
     }
 
+    private boolean hasBoneWeapon() {
+        return Equipment.search().withId(ItemID.BONE_STAFF, ItemID.BONE_SHORTBOW, ItemID.BONE_MACE).first().isPresent();
+    }
+
     @Override
     public void threadedLoop() {
         if (handleAbortFight()) {
@@ -951,6 +996,10 @@ public class FightScurriusState implements State {
             return;
         }
         if (handleEating()) {
+            Utility.sleepGaussian(50, 100);
+            return;
+        }
+        if (handleToggleRun()) {
             Utility.sleepGaussian(50, 100);
             return;
         }
@@ -970,7 +1019,7 @@ public class FightScurriusState implements State {
             Utility.sleepGaussian(50, 100);
             return;
         }
-        if (config.prioGiantRats() && handleSpeedRats()) {
+        if (hasBoneWeapon() && handleSpeedRats()) {
             Utility.sleepGaussian(50, 100);
             return;
         }
@@ -1014,15 +1063,33 @@ public class FightScurriusState implements State {
     }
 
     private int generateNextPrayerPotAt() {
-        return Utility.random(30, 40);
+        int prayerLevel = Utility.getRealSkillLevel(Skill.PRAYER);
+        int minThreshold = (int) (prayerLevel * 0.2);
+        int maxThreshold = (int) (prayerLevel * 0.4);
+
+        return Utility.random(minThreshold, maxThreshold);
     }
 
     private int generateNextDeathChargeAt() {
         return Utility.random(76, 204);
     }
 
+    private void handleVialDropping() {
+        var vials = Inventory.search().withId(ItemID.VIAL).result();
+        if (vials.isEmpty()) return;
+        for (var vial : vials) {
+            Interaction.clickWidget(vial, "Drop");
+            Utility.sleepGaussian(150, 300);
+        }
+    }
+
     private int generateNextEatAtHp() {
-        return Utility.getRealSkillLevel(Skill.HITPOINTS) - Utility.random(45, 55);
+        int hpLevel = Utility.getRealSkillLevel(Skill.HITPOINTS);
+        int minThreshold = (int) (hpLevel * 0.4);
+        int maxThreshold = (int) (hpLevel * 0.6);
+        int randomThreshold = Utility.random(minThreshold, maxThreshold);
+
+        return Math.max(15, randomThreshold);
     }
 
     @Subscribe(priority = 5000)

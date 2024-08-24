@@ -20,7 +20,7 @@ public class RestockState implements State {
     private static int fails = 0;
 
     public RestockState(ScurriusPlugin plugin, ScurriusPluginConfig config) {
-        this.plugin = plugin;
+        RestockState.plugin = plugin;
         this.config = config;
         loadout = InventoryLoadout.InventoryLoadoutSetup.deserializeFromString(config.gearLoadout());
     }
@@ -153,7 +153,6 @@ public class RestockState implements State {
     }
 
     public boolean handleBanking() {
-        log.debug("handleBanking");
         if (loadout.isSatisfied()) return false;
 
         if (config.bankingMethod() == BankingMethod.HOUSE || config.bankingMethod() == BankingMethod.FEROX) {
@@ -164,14 +163,12 @@ public class RestockState implements State {
 
 
     public boolean handleToggleRun() {
-        log.debug("handleToggleRun");
         if (Walking.isRunEnabled()) return false;
         Walking.setRun(true);
         return true;
     }
 
     public boolean handleDisablePrayers() {
-        log.debug("handleDisablePrayers");
         boolean disabledPrayer = false;
         for (var prayer : PPrayer.values()) {
             if (prayer.isActive()) {
@@ -203,7 +200,6 @@ public class RestockState implements State {
 
 
     public boolean handleWalkToScurrius() {
-        log.debug("handleWalkToScurrius");
         if (!loadout.isSatisfied()) return false;
 
         if (config.bankingMethod() == BankingMethod.HOUSE || config.bankingMethod() == BankingMethod.FEROX) {
@@ -221,6 +217,7 @@ public class RestockState implements State {
             plugin.stop();
             return;
         }
+
         if (handleToggleRun()) {
             Utility.sleepGaussian(600, 800);
             return;
@@ -243,7 +240,7 @@ public class RestockState implements State {
             plugin.paistiBreakHandler.startBreak(plugin);
 
             Utility.sleepGaussian(1000, 2000);
-            Utility.sleepUntilCondition(() -> !plugin.paistiBreakHandler.isBreakActive(plugin) && Utility.isLoggedIn(), 99999999, 5000);
+            Utility.sleepUntilCondition(() -> !plugin.paistiBreakHandler.isBreakActive(plugin) || !plugin.paistiBreakHandler.getActivePlugins().contains(plugin), 99999999, 5000);
         }
         if (handleWalkToScurrius()) {
             Utility.sleepGaussian(200, 400);
