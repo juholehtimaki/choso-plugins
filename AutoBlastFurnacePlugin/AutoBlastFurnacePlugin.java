@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
-@PluginDescriptor(name = "AutoBlastFurnace", description = "Smelts using blast furnace", enabledByDefault = false, tags = {"paisti", "choso", "skilling", "smithing"})
+@PluginDescriptor(name = "<HTML><FONT COLOR=#1BB532>AutoBlastFurnace</FONT></HTML>", description = "Smelts using blast furnace", enabledByDefault = false, tags = {"paisti", "choso", "skilling", "smithing"})
 public class AutoBlastFurnacePlugin extends Plugin {
     @Inject
     AutoBlastFurnacePluginConfig config;
@@ -68,12 +68,6 @@ public class AutoBlastFurnacePlugin extends Plugin {
 
     @Override
     protected void startUp() throws Exception {
-        var paistiUtilsPlugin = pluginManager.getPlugins().stream().filter(p -> p instanceof PaistiUtils).findFirst();
-        if (paistiUtilsPlugin.isEmpty() || !pluginManager.isPluginEnabled(paistiUtilsPlugin.get())) {
-            log.info("PBlastFurnace: PaistiUtils is required for this plugin to work");
-            pluginManager.setPluginEnabled(this, false);
-            return;
-        }
         overlayManager.add(sceneOverlay);
         overlayManager.add(screenOverlay);
 
@@ -253,7 +247,7 @@ public class AutoBlastFurnacePlugin extends Plugin {
             }
         }
 
-        var coalBag = Inventory.search().matchesWildCardNoCase("Open coal bag").first();
+        var coalBag = Inventory.search().matchesWildcard("Open coal bag").first();
         if (coalBag.isPresent()) {
             if (Interaction.clickWidget(coalBag.get(), "Empty")) {
                 Utility.sleepUntilCondition(this::inventoryContainsOres, 3000);
@@ -476,8 +470,15 @@ public class AutoBlastFurnacePlugin extends Plugin {
             Utility.sleepGaussian(2000, 3000);
             paistiBreakHandler.startBreak(this);
             Utility.sleepGaussian(1000, 2000);
-            Utility.sleepUntilCondition(() -> !paistiBreakHandler.isBreakActive(this) && Utility.isLoggedIn(), 99999999, 5000);
+            Utility.sleepUntilCondition(() -> !paistiBreakHandler.isBreakActive(this), 99999999, 5000);
             return;
+        }
+        if (!Utility.isLoggedIn()) {
+            if (!Utility.sleepUntilCondition(Utility::isLoggedIn, 10000, 300)) {
+                log.info("Player is not logged in, stopping");
+                stop();
+                return;
+            }
         }
         if (Walking.getPlayerLocation().distanceTo(BLAST_FURNACE_BANK_TILE) > 50 && !WebWalker.walkTo(BLAST_FURNACE_BANK_TILE)) {
             Utility.sendGameMessage("Unable to walk to blast furnace", "AutoBlastFurnace");
