@@ -26,7 +26,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
-@PluginDescriptor(name = "PGearSwitcher", description = "Gear switching hotkeys / triggers", enabledByDefault = false, tags = {"paisti", "combat"})
+@PluginDescriptor(name = "<HTML><FONT COLOR=#1BB532>PGearSwitcher</FONT></HTML>", description = "Gear switching hotkeys / triggers", enabledByDefault = false, tags = {"paisti", "combat"})
 public class GearSwitcherPlugin extends Plugin {
 
     @Inject
@@ -43,9 +43,9 @@ public class GearSwitcherPlugin extends Plugin {
     private GearSwitcherScript fifthLoadout;
 
     @Getter
-    static Actor lastTargetInteractedWith;
+    static volatile Actor lastTargetInteractedWith;
     @Getter
-    static Actor lastTargetInteractedWithMe;
+    static volatile Actor lastTargetInteractedWithMe;
 
     @Inject
     public AttackTickTracker attackTickTracker;
@@ -92,12 +92,6 @@ public class GearSwitcherPlugin extends Plugin {
 
     @Override
     protected void startUp() throws Exception {
-        var paistiUtilsPlugin = pluginManager.getPlugins().stream().filter(p -> p instanceof PaistiUtils).findFirst();
-        if (paistiUtilsPlugin.isEmpty() || !pluginManager.isPluginEnabled(paistiUtilsPlugin.get())) {
-            log.info("PGearSwitcher: PaistiUtils is required for this plugin to work");
-            pluginManager.setPluginEnabled(this, false);
-            return;
-        }
         keyManager.registerKeyListener(firstHotkeyListener);
         keyManager.registerKeyListener(secondHotkeyListener);
         keyManager.registerKeyListener(thirdHotkeyListener);

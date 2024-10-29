@@ -20,54 +20,14 @@ public class AutocastCommand implements GearSwitcherCommand {
     public static final String INSTRUCTION_PREFIX = "AUTOCAST";
 
     AutocastCommand(String spellName) {
-        this.spell = Arrays.stream(Standard.values()).filter(f -> f.name().replace("_", " ").equalsIgnoreCase(spellName) || f.name().equalsIgnoreCase(spellName)).findFirst().orElse(null);
+        this.spell = Spell.findSpellByName(spellName);
         if (this.spell == null) throw new IllegalArgumentException("Invalid spell name:" + spellName);
-    }
-
-    private void toggleFireSurge() {
-        MenuAction menuAction = MenuAction.CC_OP;
-        int p0 = 51;
-        int p1 = 13172737;
-        int itemId = -1;
-        int objectId = 1;
-        String opt = "Fire Surge";
-
-        var canvasHeight = PaistiUtils.getClient().getCanvasHeight();
-        var canvasWidth = PaistiUtils.getClient().getCanvasWidth();
-        Point clickPoint = new Point((int) (canvasWidth * 0.763) + Utility.random(0, 146), (int) (canvasHeight * 0.842) + Utility.random(0, 12));
-        //PaistiUtils.consumeNextClick();
-        //Mouse.clickPoint(clickPoint);
-        Hooks.invokeMenuAction(p0, p1, menuAction.getId(), objectId, itemId, opt, "", clickPoint.getX(), clickPoint.getY());
-    }
-
-    private void toggleSpellbook() {
-        MenuAction menuAction = MenuAction.CC_OP;
-        int p0 = -1;
-        int p1 = 38862874;
-        int itemId = -1;
-        int objectId = 1;
-        String opt = "Choose spell";
-
-        var canvasHeight = PaistiUtils.getClient().getCanvasHeight();
-        var canvasWidth = PaistiUtils.getClient().getCanvasWidth();
-        Point clickPoint = new Point((int) (canvasWidth * 0.763) + Utility.random(0, 146), (int) (canvasHeight * 0.842) + Utility.random(0, 12));
-        //PaistiUtils.consumeNextClick();
-        //Mouse.clickPoint(clickPoint);
-        Hooks.invokeMenuAction(p0, p1, menuAction.getId(), objectId, itemId, opt, "", clickPoint.getX(), clickPoint.getY());
     }
 
 
     @Override
     public boolean execute() {
-        Utility.runOnClientThread(() -> {
-            toggleSpellbook();
-            return true;
-        });
-        Utility.sleepUntilCondition(() -> Widgets.getWidget(201, 1) != null, 1200, 50);
-        Utility.runOnClientThread(() -> {
-            toggleFireSurge();
-            return true;
-        });
+        Utility.setAutocastSpell(spell);
         return true;
     }
 

@@ -16,7 +16,7 @@ public class SleepCommand implements GearSwitcherCommand {
 
     @Override
     public boolean execute() {
-        Utility.sleepGaussian(sleepTime, sleepTime + 50);
+        Utility.sleepGaussian(sleepTime, sleepTime + 40);
         return false;
     }
 

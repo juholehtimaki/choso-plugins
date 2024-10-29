@@ -30,7 +30,7 @@ public class GearSwitcherScript {
         if (Duration.between(lastExecuted.get(), Instant.now()).toMillis() < 300) return false;
         lastExecuted.set(Instant.now());
 
-        log.debug("Running executor");
+        log.debug("Running gearSwitcher executor");
         PaistiUtils.runOnExecutor(() -> {
             log.debug("Check allowPvPUsage & wilderness level");
             if (!allowPvPUsage && (Utility.getWildernessLevelFrom(Walking.getPlayerLocation()) > 0 || Utility.isPlayerInDangerousPvpArea())) {
@@ -38,7 +38,6 @@ public class GearSwitcherScript {
                 return false;
             }
 
-            log.debug("Executor started");
             for (var command : commands) {
                 log.debug("Executing command: " + command.getClass().getSimpleName());
                 if (command.execute()) {

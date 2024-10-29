@@ -17,20 +17,42 @@ public class SpellCommand implements GearSwitcherCommand {
 
     private static final List<Spell> targetedSpells = new ArrayList<>() {
         {
-            add(Standard.FIRE_SURGE);
+            add(Standard.WIND_STRIKE);
+            add(Standard.WIND_BOLT);
+            add(Standard.WIND_BLAST);
+            add(Standard.WIND_WAVE);
+            add(Standard.WIND_SURGE);
+            add(Standard.WATER_STRIKE);
+            add(Standard.WATER_BOLT);
+            add(Standard.WATER_BLAST);
+            add(Standard.WATER_WAVE);
+            add(Standard.WATER_SURGE);
+            add(Standard.EARTH_STRIKE);
+            add(Standard.EARTH_BOLT);
+            add(Standard.EARTH_BLAST);
+            add(Standard.EARTH_WAVE);
+            add(Standard.EARTH_SURGE);
+            add(Standard.FIRE_STRIKE);
+            add(Standard.FIRE_BOLT);
+            add(Standard.FIRE_BLAST);
             add(Standard.FIRE_WAVE);
+            add(Standard.FIRE_SURGE);
+            add(Standard.ENTANGLE);
+            add(Standard.SNARE);
+            add(Standard.BIND);
+            add(Standard.TELE_BLOCK);
             add(Ancient.BLOOD_BARRAGE);
             add(Ancient.ICE_BARRAGE);
             add(Ancient.SHADOW_BARRAGE);
             add(Ancient.SMOKE_BARRAGE);
-            add(Ancient.BLOOD_BURST);
-            add(Ancient.ICE_BURST);
-            add(Ancient.SHADOW_BURST);
-            add(Ancient.SMOKE_BURST);
             add(Ancient.BLOOD_BLITZ);
             add(Ancient.ICE_BLITZ);
             add(Ancient.SHADOW_BLITZ);
             add(Ancient.SMOKE_BLITZ);
+            add(Ancient.BLOOD_BURST);
+            add(Ancient.ICE_BURST);
+            add(Ancient.SHADOW_BURST);
+            add(Ancient.SMOKE_BURST);
         }
     };
     private static final List<Spell> allSpells = new ArrayList<>() {
@@ -43,7 +65,7 @@ public class SpellCommand implements GearSwitcherCommand {
     };
 
     SpellCommand(String spellName) {
-        this.spell = allSpells.stream().filter(f -> f.getName().equalsIgnoreCase(spellName)).findFirst().orElse(null);
+        this.spell = Spell.findSpellByName(spellName);
         if (this.spell == null) throw new IllegalArgumentException("Invalid spell name:" + spellName);
     }
 

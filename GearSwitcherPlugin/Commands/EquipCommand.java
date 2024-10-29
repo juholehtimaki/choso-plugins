@@ -32,7 +32,7 @@ public class EquipCommand implements GearSwitcherCommand {
                     }
                     return false;
                 } else {
-                    var itemToEquip = Inventory.search().matchesWildCardNoCase(itemIdOrName).first();
+                    var itemToEquip = Inventory.search().matchesWildcard(itemIdOrName).first();
                     if (Equipment.search().matchesWildCardNoCase(itemIdOrName).first().isPresent()) return false;
                     if (itemToEquip.isPresent()) {
                         return Interaction.clickWidget(itemToEquip.get(), "Wield", "Wear", "Equip");

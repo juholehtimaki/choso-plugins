@@ -28,8 +28,8 @@ public interface GearSwitcherCommand {
                 return SpellCommand.deserializeFromString(serialized);
             case AutocastCommand.INSTRUCTION_PREFIX:
                 return AutocastCommand.deserializeFromString(serialized);
-            case WaitCommand.INSTRUCTION_PREFIX:
-                return WaitCommand.deserializeFromString(serialized);
+            case WaitAnimationCommand.INSTRUCTION_PREFIX:
+                return WaitAnimationCommand.deserializeFromString(serialized);
             case UnEquipCommand.INSTRUCTION_PREFIX:
                 return UnEquipCommand.deserializeFromString(serialized);
             case DisablePrayCommand.INSTRUCTION_PREFIX:
