@@ -8,7 +8,7 @@ import com.theplug.PaistiBreakHandler.PaistiBreakHandler;
 import com.theplug.PaistiUtils.API.*;
 import com.theplug.PaistiUtils.API.AttackTickTracker.AttackTickTracker;
 import com.theplug.PaistiUtils.API.Loadouts.InventoryLoadout;
-import com.theplug.PaistiUtils.Framework.ThreadedScriptRunner;
+import com.theplug.OBS.ThreadedRunner;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ActorDeath;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.config.Keybind;
@@ -76,7 +77,7 @@ public class ColosseumFarmerPlugin extends Plugin {
     @Inject
     private ConfigManager configManager;
 
-    public ThreadedScriptRunner runner = new ThreadedScriptRunner();
+    public ThreadedRunner runner = new ThreadedRunner();
 
     @Getter
     @Setter
@@ -92,6 +93,10 @@ public class ColosseumFarmerPlugin extends Plugin {
     @Getter
     private InventoryLoadout.InventoryLoadoutSetup mageGear = null;
     public final AtomicReference<Integer> playerDiedOnTick = new AtomicReference<>(-1);
+
+    static final String OUT_OF_SCALES_MESSAGE = "your blowpipe needs to be charged";
+    static final String OUT_OF_DARTS_MESSAGE1 = "your blowpipe has run out of darts";
+    static final String OUT_OF_DARTS_MESSAGE2 = "your blowpipe contains no darts";
 
     @Provides
     public ColosseumFarmerPluginConfig getConfig(ConfigManager configManager) {
@@ -235,6 +240,23 @@ public class ColosseumFarmerPlugin extends Plugin {
         if (!isRunning()) return;
 
         runner.onGameTick();
+    }
+
+    @Subscribe
+    public void onChatMessage(ChatMessage event) {
+        if (event.getType() != ChatMessageType.GAMEMESSAGE) return;
+        if (event.getMessage().toLowerCase().contains(OUT_OF_SCALES_MESSAGE.toLowerCase())) {
+            stop();
+            return;
+        }
+        if (event.getMessage().toLowerCase().contains(OUT_OF_DARTS_MESSAGE1.toLowerCase())) {
+            stop();
+            return;
+        }
+        if (event.getMessage().toLowerCase().contains(OUT_OF_DARTS_MESSAGE2.toLowerCase())) {
+            stop();
+            return;
+        }
     }
 
     public Duration getRunTimeDuration() {
