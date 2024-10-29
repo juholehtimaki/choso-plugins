@@ -437,7 +437,9 @@ public class FightScurriusState implements State {
 
     private boolean handleToggleRun() {
         if (Walking.isRunEnabled() || Walking.getRunEnergy() < 15) return false;
-        return Walking.setRun(true);
+        Walking.setRun(true);
+        Utility.sleepUntilCondition(Walking::isRunEnabled, 1200, 600);
+        return true;
     }
 
     private boolean shouldLootItem(PGroundItem item) {
@@ -632,9 +634,9 @@ public class FightScurriusState implements State {
 
     @Override
     public void threadedOnGameTick() {
-        Utility.sleep(200);
+        Utility.sleep(120);
         setOffensivePrayers();
-        Utility.sleep(60);
+        Utility.sleepGaussian(40, 80);
         var scurrius = getScurrius();
         var scurriusPose = scurrius != null ? scurrius.getPoseAnimation() : -1;
         if (defensivePrayer.get() == null && scurriusPose != 10689) {

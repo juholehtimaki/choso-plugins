@@ -60,7 +60,7 @@ public class RestockState implements State {
                 return _missingPrayer <= 0 && _missingHp <= 0;
             }, 10000, 300);
             if (restored) {
-                Utility.sleepGaussian(600, 1100);
+                Utility.sleepGaussian(1200, 1400);
                 return true;
             }
         }
@@ -83,7 +83,7 @@ public class RestockState implements State {
             var _missingPrayer = Utility.getRealSkillLevel(Skill.PRAYER) - Utility.getBoostedSkillLevel(Skill.PRAYER);
             return _missingPrayer <= 0 && _missingHp <= 0;
         }, 10000, 600);
-        Utility.sleepGaussian(600, 1100);
+        Utility.sleepGaussian(1200, 1400);
         return Utility.getRealSkillLevel(Skill.HITPOINTS) <= Utility.getBoostedSkillLevel(Skill.HITPOINTS) && Utility.getRealSkillLevel(Skill.PRAYER) <= Utility.getBoostedSkillLevel(Skill.PRAYER);
     }
 
@@ -195,7 +195,13 @@ public class RestockState implements State {
         }
 
         Interaction.clickTileObject(rocks.get(), "Climb-through (private)");
-        return Utility.sleepUntilCondition(() -> plugin.isInsideScurriusArea());
+        Utility.sleepUntilCondition(() -> plugin.isInsideScurriusArea() || Dialog.isConversationWindowUp());
+        if (Dialog.isConversationWindowUp()) {
+            Dialog.handleGenericDialog(new String[]{"Yes, and"});
+            return Utility.sleepUntilCondition(() -> plugin.isInsideScurriusArea());
+        }
+
+        return plugin.isInsideScurriusArea();
     }
 
 

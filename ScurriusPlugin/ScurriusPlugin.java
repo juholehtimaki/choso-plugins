@@ -1,9 +1,9 @@
 package com.theplug.ScurriusPlugin;
 
+import com.theplug.OBS.ThreadedRunner;
 import com.theplug.PaistiBreakHandler.PaistiBreakHandler;
 import com.theplug.PaistiUtils.API.*;
 import com.theplug.PaistiUtils.API.AttackTickTracker.AttackTickTracker;
-import com.theplug.PaistiUtils.Framework.ThreadedScriptRunner;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
@@ -72,7 +72,7 @@ public class ScurriusPlugin extends Plugin {
     @Inject
     private ConfigManager configManager;
 
-    public ThreadedScriptRunner runner = new ThreadedScriptRunner();
+    public ThreadedRunner runner = new ThreadedRunner();
 
     @Getter
     @Setter
