@@ -2,10 +2,10 @@ package com.theplug.AutoChaosAltarPlugin;
 
 import com.google.inject.Inject;
 import com.google.inject.Provides;
+import com.theplug.OBS.ThreadedRunner;
 import com.theplug.PaistiBreakHandler.PaistiBreakHandler;
 import com.theplug.PaistiUtils.API.*;
 import com.theplug.PaistiUtils.API.Loadouts.InventoryLoadout;
-import com.theplug.PaistiUtils.Framework.ThreadedScriptRunner;
 import com.theplug.PaistiUtils.PathFinding.LocalPathfinder;
 import com.theplug.PaistiUtils.PathFinding.RunescapeBank;
 import com.theplug.PaistiUtils.PathFinding.WebWalker;
@@ -58,7 +58,7 @@ public class AutoChaosAltarPlugin extends Plugin {
     @Inject
     private ConfigManager configManager;
 
-    public ThreadedScriptRunner runner = new ThreadedScriptRunner();
+    public ThreadedRunner runner = new ThreadedRunner();
 
     InventoryLoadout.InventoryLoadoutSetup loadout;
     static final WorldPoint WINE_LOCATION = new WorldPoint(2950, 3823, 0);
@@ -140,6 +140,7 @@ public class AutoChaosAltarPlugin extends Plugin {
     private boolean handleHopOnPlayerNearby() {
         if (!isPlayerAlive()) return false;
         if (!isInWilderness()) return false;
+        if (!Utility.isLoggedIn()) return false;
         var bone = Inventory.search().nameContains("bones").first();
         if (bone.isEmpty()) return false;
 
@@ -158,7 +159,7 @@ public class AutoChaosAltarPlugin extends Plugin {
 
         if (shouldHop) {
             Utility.sendGameMessage("Player nearby. Hopping worlds.", "AutoChaosAltar");
-            Worldhopping.tryHopToNext(false);
+            Worldhopping.tryHopToNext(false, Utility.random(1, 7));
             return true;
         }
         return false;
