@@ -61,14 +61,69 @@ public interface NMZHelperPluginConfig extends Config {
     }
 
     @ConfigItem(
-            keyName = "quickPrayDuringPowerSurge",
-            name = "Quick prayer during power surge",
-            description = "Enable to have the plugin activate quick prayers during power surges",
+            keyName = "offensivePrayDuringPowerSurge",
+            name = "Off. prayer in power surge",
+            description = "Enable to have the plugin activate offensive prayers during power surges.",
             position = 5,
             section = generalSettings
     )
-    default boolean quickPrayDuringPowerSurge() {
+    default boolean offensivePrayDuringPowerSurge() {
         return false;
+    }
+
+    @ConfigItem(
+            keyName = "fullAutoMode",
+            name = "Full auto mode",
+            description = "Enable to have the plugin restock and re-enter NMZ automatically using previous settings. Set potions to withdraw below. Requires rock cake / locator orb.",
+            position = 6,
+            section = generalSettings
+    )
+    default boolean fullAutoMode() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "overloadsQuantity",
+            name = "Overloads amount",
+            description = "The amount of overload potions to withdraw in full auto mode",
+            position = 7,
+            section = generalSettings
+    )
+    default int overloadsQuantity() {
+        return 28;
+    }
+
+    @ConfigItem(
+            keyName = "absorptionQuantity",
+            name = "Absorption amount",
+            description = "The amount of absorption potions to withdraw in full auto mode",
+            position = 8,
+            section = generalSettings
+    )
+    default int absorptionQuantity() {
+        return 76;
+    }
+
+    @ConfigItem(
+            keyName = "superRangingQuantity",
+            name = "Spr. Ranging amount",
+            description = "The amount of super ranging potions to withdraw in full auto mode",
+            position = 9,
+            section = generalSettings
+    )
+    default int superRangingQuantity() {
+        return 0;
+    }
+
+    @ConfigItem(
+            keyName = "superMagicQuantity",
+            name = "Spr. Magic amount",
+            description = "The amount of super magic potions to withdraw in full auto mode",
+            position = 10,
+            section = generalSettings
+    )
+    default int superMagicQuantity() {
+        return 0;
     }
 
     @ConfigSection(
