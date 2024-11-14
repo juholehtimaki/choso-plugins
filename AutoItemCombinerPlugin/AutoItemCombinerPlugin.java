@@ -2,12 +2,12 @@ package com.theplug.AutoItemCombinerPlugin;
 
 import com.theplug.PaistiBreakHandler.PaistiBreakHandler;
 import com.theplug.PaistiUtils.API.*;
-import com.theplug.PaistiUtils.Framework.ThreadedScriptRunner;
+import com.theplug.OBS.ThreadedRunner;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
 import com.theplug.SES.PluginId;
-import com.theplug.SES.SG;
+import com.theplug.SES.SG.SG;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.config.ConfigManager;
@@ -30,7 +30,7 @@ public class AutoItemCombinerPlugin extends Plugin {
     PluginManager pluginManager;
     @Inject
     private KeyManager keyManager;
-    ThreadedScriptRunner runner = new ThreadedScriptRunner();
+    ThreadedRunner runner = new ThreadedRunner();
     SG SG = new SG(PluginId.PAUTOITEMCOMBINER, runner);
     @Inject
     PaistiBreakHandler paistiBreakHandler;
