@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Slf4j
-@PluginDescriptor(name = "AutoHopper", description = "Hops to a different world when near other players and conditions match", enabledByDefault = false, tags = {"paisti", "choso"})
+@PluginDescriptor(name = "<HTML><FONT COLOR=#1BB532>AutoHopper</FONT></HTML>", description = "Hops to a different world when near other players and conditions match", enabledByDefault = false, tags = {"paisti", "choso"})
 public class AutoHopperPlugin extends Plugin {
     @Inject
     AutoHopperPluginConfig config;
@@ -41,12 +41,6 @@ public class AutoHopperPlugin extends Plugin {
 
     @Override
     protected void startUp() throws Exception {
-        var paistiUtilsPlugin = pluginManager.getPlugins().stream().filter(p -> p instanceof PaistiUtils).findFirst();
-        if (paistiUtilsPlugin.isEmpty() || !pluginManager.isPluginEnabled(paistiUtilsPlugin.get())) {
-            log.info("AutoHopper: PaistiUtils is required for this plugin to work");
-            pluginManager.setPluginEnabled(this, false);
-            return;
-        }
         overlayManager.add(sceneOverlay);
     }
 
@@ -93,10 +87,10 @@ public class AutoHopperPlugin extends Plugin {
     @Subscribe(priority = 10000)
     public void onGameTick(GameTick e) {
         if (config.isHoppingDisabled()) return;
-        if (PaistiUtils.getClient().getGameState() == GameState.HOPPING) return;
+        if (PaistiUtils.getClient().getGameState() != GameState.LOGGED_IN) return;
         var players = getMatchingPlayers();
-        if (players.size() > 0) {
-            Worldhopping.tryHopToNext(false);
+        if (!players.isEmpty()) {
+            Worldhopping.tryHopToNext(false, Utility.random(1, 4));
         }
     }
 }
