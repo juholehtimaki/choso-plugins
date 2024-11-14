@@ -2,9 +2,9 @@ package com.theplug.AutoBankSkillerPlugin;
 
 import com.google.inject.Inject;
 import com.google.inject.Provides;
+import com.theplug.OBS.ThreadedRunner;
 import com.theplug.PaistiBreakHandler.PaistiBreakHandler;
 import com.theplug.PaistiUtils.API.*;
-import com.theplug.PaistiUtils.Framework.ThreadedScriptRunner;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.events.GameTick;
@@ -48,7 +48,7 @@ public class AutoBankSkillerPlugin extends Plugin {
     @Inject
     private ConfigManager configManager;
 
-    public ThreadedScriptRunner runner = new ThreadedScriptRunner();
+    public ThreadedRunner runner = new ThreadedRunner();
 
     @Provides
     public AutoBankSkillerPluginConfig getConfig(ConfigManager configManager) {

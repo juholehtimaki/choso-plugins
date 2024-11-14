@@ -480,7 +480,7 @@ public enum BankSkillerMethod {
         if (itemsToNotDeposit.size() == 0) {
             Bank.depositInventory();
         } else {
-            Bank.depositInventoryExceptWithNames(itemsToNotDeposit);
+            Bank.depositAllExceptNames(itemsToNotDeposit);
         }
 
         Utility.sleepUntilCondition(() -> Utility.sleepUntilCondition(() -> Inventory.getEmptySlots() > 0, 1000, 200));
@@ -509,7 +509,7 @@ public enum BankSkillerMethod {
         if (itemsToNotDeposit.size() == 0) {
             Bank.depositInventory();
         } else {
-            Bank.depositInventoryExceptWithIds(itemsToNotDeposit);
+            Bank.depositAllExceptIds(itemsToNotDeposit);
         }
 
         Utility.sleepUntilCondition(() -> Utility.sleepUntilCondition(() -> Inventory.getEmptySlots() > 0, 1000, 200));
@@ -537,7 +537,7 @@ public enum BankSkillerMethod {
         if (itemsToNotDeposit.size() == 0) {
             Bank.depositInventory();
         } else {
-            Bank.depositInventoryExceptWithNames(itemsToNotDeposit);
+            Bank.depositAllExceptNames(itemsToNotDeposit);
         }
 
         Utility.sleepUntilCondition(() -> Utility.sleepUntilCondition(() -> Inventory.getEmptySlots() > 0, 1000, 200));
