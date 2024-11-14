@@ -36,19 +36,11 @@ public class AutoMotherlodeMinePluginSceneOverlay extends Overlay {
 
     @Override
     public Dimension render(Graphics2D graphics) {
-        if (!plugin.isRunning()) return null;
-        var ores = TileObjects.search().withName("Ore vein").withAction("Mine").result();
-        for (var ore : ores) {
-            var o = (WallObject) ore;
-            drawTile(graphics, ore.getWorldLocation(), Color.CYAN, 50, Integer.toString(o.getOrientationA()), new BasicStroke(1));
-            //var areas = LocalPathfinder.ReachabilityMap.getPointsTouchingArea(ore.getWorldLocation().toWorldArea());
-            var rMap = LocalPathfinder.getReachabilityMap();
-            var interactionPoints = rMap.getInteractionPointsForArea(ore.getWorldLocation().toWorldArea());
-            for (var ip : interactionPoints) {
-                drawTile(graphics, ip, Color.CYAN, 50, "TP", new BasicStroke(1));
-            }
-        }
-        renderCuboid(graphics, client, plugin.NW_CUBOID, Color.CYAN, 5, "DESIRED");
+        //if (!plugin.isRunning()) return null;
+        //renderCuboid(graphics, client, plugin.NW_CUBOID, Color.CYAN, 5, "DESIRED");
+        //renderCuboid(graphics, client, plugin.UPPER_CUBOID, Color.CYAN, 5, "DESIRED");
+        //renderCuboidArea(graphics, client, Area.UPPER_AREA.getCuboidArea(), Color.CYAN, 5);
+        //renderCuboidArea(graphics, client, Area.NW_AREA.getCuboidArea(), Color.CYAN, 5);
         return null;
     }
 
@@ -83,7 +75,7 @@ public class AutoMotherlodeMinePluginSceneOverlay extends Overlay {
         final LocalPoint centerLp = new LocalPoint(
                 lp.getX() + Perspective.LOCAL_TILE_SIZE * (cuboid.getWidth() - 1) / 2,
                 lp.getY() + Perspective.LOCAL_TILE_SIZE * (cuboid.getHeight() - 1) / 2);
-        Polygon tilePoly = Perspective.getCanvasTileAreaPoly(client, centerLp, cuboid.getWidth(), cuboid.getHeight(), cuboid.getPlane(), 0);
+        Polygon tilePoly = getCuboidRenderPolygon(client, cuboid);
         if (tilePoly == null) return;
         OverlayUtil.renderPolygon(graphics, tilePoly, color, new Color(color.getRed(), color.getGreen(), color.getBlue(), alpha), new BasicStroke(1));
         if (label != null && !label.isEmpty()) {
@@ -91,4 +83,22 @@ public class AutoMotherlodeMinePluginSceneOverlay extends Overlay {
             OverlayUtil.renderTextLocation(graphics, loc, label, color);
         }
     }
+
+    private static Polygon getCuboidRenderPolygon(Client client, Geometry.Cuboid cuboid) {
+        LocalPoint lp = LocalPoint.fromWorld(client, cuboid.getSouthWestTile());
+        if (lp == null) return null;
+        final LocalPoint centerLp = new LocalPoint(
+                lp.getX() + Perspective.LOCAL_TILE_SIZE * (cuboid.getWidth() - 1) / 2,
+                lp.getY() + Perspective.LOCAL_TILE_SIZE * (cuboid.getHeight() - 1) / 2);
+        return Perspective.getCanvasTileAreaPoly(client, centerLp, cuboid.getWidth(), cuboid.getHeight(), cuboid.getPlane(), 0);
+    }
+
+    private static void renderCuboidArea(Graphics2D graphics, Client client, Geometry.CuboidArea cuboidArea, Color color, int alpha) {
+        for (var cuboid : cuboidArea.getCuboids()) {
+            Polygon poly = getCuboidRenderPolygon(client, cuboid);
+            if (poly == null) continue;
+            OverlayUtil.renderPolygon(graphics, poly, color, new Color(color.getRed(), color.getGreen(), color.getBlue(), alpha), new BasicStroke(1));
+        }
+    }
+
 }

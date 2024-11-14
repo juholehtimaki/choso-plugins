@@ -2,14 +2,16 @@ package com.theplug.AutoMotherlodeMinePlugin;
 
 import com.google.inject.Inject;
 import com.google.inject.Provides;
+import com.theplug.OBS.ThreadedRunner;
 import com.theplug.PaistiBreakHandler.PaistiBreakHandler;
 import com.theplug.PaistiUtils.API.*;
-import com.theplug.PaistiUtils.Framework.ThreadedScriptRunner;
+import com.theplug.PaistiUtils.API.SharedLogic.Pickaxe;
 import com.theplug.PaistiUtils.PathFinding.LocalPathfinder;
 import com.theplug.PaistiUtils.PathFinding.WebWalker;
 import com.theplug.PaistiUtils.Plugin.PaistiUtils;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ItemID;
+import net.runelite.api.Skill;
 import net.runelite.api.Varbits;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameTick;
@@ -33,7 +35,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 
 @Slf4j
-@PluginDescriptor(name = "AutoMotherlodeMine", description = "Automates motherlode mine", enabledByDefault = false, tags = {"paisti", "choso", "motherlode mine", "mining"})
+@PluginDescriptor(name = "<HTML><FONT COLOR=#1BB532>AutoMotherlodeMine</FONT></HTML>", description = "Automates motherlode mine", enabledByDefault = false, tags = {"paisti", "choso", "motherlode mine", "mining"})
 public class AutoMotherlodeMinePlugin extends Plugin {
     @Inject
     public AutoMotherlodeMinePluginConfig config;
@@ -60,18 +62,15 @@ public class AutoMotherlodeMinePlugin extends Plugin {
     @Inject
     private ConfigManager configManager;
 
-    private static final WorldPoint NW_CORNER1 = new WorldPoint(3716, 5687, 0);
-    private static final WorldPoint NW_CORNER2 = new WorldPoint(3724, 5659, 0);
-    private static final WorldPoint NW_CORNER_TRAVEL_LOC = new WorldPoint(3722, 5685, 0);
-    public static final Geometry.Cuboid NW_CUBOID = new Geometry.Cuboid(NW_CORNER1, NW_CORNER2);
     private static final WorldPoint DEPOSIT_HOPPER_WORLDPOINT = new WorldPoint(3749, 5672, 0);
     private static final WorldPoint SACK_WORLDPOINT = new WorldPoint(3749, 5659, 0);
     private static final WorldPoint HAMMER_CRATE_WORLDPOINT = new WorldPoint(3752, 5664, 0);
-
     private static final WorldPoint BANK_CHEST_WORLDPOINT = new WorldPoint(3758, 5666, 0);
-    public static final AtomicReference<Boolean> shouldEmptyStack = new AtomicReference<>(false);
+    public static final AtomicReference<Boolean> shouldEmptySack = new AtomicReference<>(false);
+    private final AtomicReference<Integer> playersPresentForTicks = new AtomicReference<>(0);
+    private final AtomicReference<Integer> previousMiningLevel = new AtomicReference<>(null);
 
-    public ThreadedScriptRunner runner = new ThreadedScriptRunner();
+    public ThreadedRunner runner = new ThreadedRunner();
 
     @Provides
     public AutoMotherlodeMinePluginConfig getConfig(ConfigManager configManager) {
@@ -105,12 +104,6 @@ public class AutoMotherlodeMinePlugin extends Plugin {
 
     @Override
     protected void startUp() throws Exception {
-        var paistiUtilsPlugin = pluginManager.getPlugins().stream().filter(p -> p instanceof PaistiUtils).findFirst();
-        if (paistiUtilsPlugin.isEmpty() || !pluginManager.isPluginEnabled(paistiUtilsPlugin.get())) {
-            log.info("AutoMotherlodeMine: PaistiUtils is required for this plugin to work");
-            pluginManager.setPluginEnabled(this, false);
-            return;
-        }
         keyManager.registerKeyListener(startHotkeyListener);
         overlayManager.add(screenOverlay);
         overlayManager.add(sceneOverlay);
@@ -134,17 +127,21 @@ public class AutoMotherlodeMinePlugin extends Plugin {
     }
 
     private boolean handleMining() {
-        if (Utility.getIdleTicks() < 3) return false;
+        if (Utility.getIdleTicks() < 3 && Walking.getPlayerLocation().distanceTo(DEPOSIT_HOPPER_WORLDPOINT) > 2)
+            return false;
         if (Inventory.isFull()) return false;
-        if (!NW_CUBOID.contains(Walking.getPlayerLocation())) {
-            WebWalker.walkTo(NW_CORNER_TRAVEL_LOC);
+        if (!config.area().getCuboidArea().contains(Walking.getPlayerLocation())) {
+            WebWalker.walkTo(config.area().getWp());
         }
-        var ore = TileObjects.search().withName("Ore vein").withAction("Mine").withinCuboid(NW_CUBOID).nearestToPlayerTrueDistance();
+        var ore = TileObjects.search().withName("Ore vein").withAction("Mine").withinCuboid(config.area().getCuboidArea()).nearestToPlayerTrueDistance();
         if (ore.isPresent()) {
             var rMap = LocalPathfinder.getReachabilityMap();
             if (!rMap.isReachable(ore.get())) {
                 Utility.sendGameMessage("Moving to ore", "AutoMotherlodeMine");
-                WebWalker.walkTo(ore.get().getWorldLocation());
+                if (!WebWalker.walkTo(ore.get().getWorldLocation())) {
+                    Utility.sendGameMessage("Failed to path to ore", "AutoMotherlodeMine");
+                    return false;
+                }
             }
             Utility.sendGameMessage("Mining ore", "AutoMotherlodeMine");
             useDragonPickaxeSpec();
@@ -156,10 +153,13 @@ public class AutoMotherlodeMinePlugin extends Plugin {
 
     private boolean shouldDeposit() {
         if (inventoryContainsOres()) return false;
-        var currDirts = Inventory.search().withName("Pay-dirt").result().size();
+        var dirtsInInv = Inventory.search().withName("Pay-dirt").result().size();
+        if (dirtsInInv == 0) return false;
+        int SACK_CAPACITY = 108;
+
         var dirtsInSack = getQuantityInSack();
-        if (dirtsInSack < 80) {
-            if (Inventory.isFull() || currDirts + dirtsInSack == 80) {
+        if (dirtsInSack >= SACK_CAPACITY - 28) {
+            if (dirtsInInv + dirtsInSack == SACK_CAPACITY) {
                 return true;
             }
         }
@@ -175,17 +175,28 @@ public class AutoMotherlodeMinePlugin extends Plugin {
     }
 
     private boolean inventoryContainsOres() {
-        return Inventory.search().matchesWildCardNoCase("*ore").first().isPresent() || Inventory.search().withName("Coal").first().isPresent();
+        return Inventory.search().matchesWildcard("*ore").first().isPresent() || Inventory.search().withName("Coal").first().isPresent();
     }
 
     private boolean handleWorldHop() {
-        if (!NW_CUBOID.contains(Walking.getPlayerLocation())) return false;
-        return Utility.worldHopIfPlayersNearby(30);
+        if (config.area() == Area.UPPER_AREA) return false;
+        if (!config.area().getCuboidArea().contains(Walking.getPlayerLocation())) return false;
+        if (playersPresentForTicks.get() >= 20) {
+            Utility.sendGameMessage("Hopping to avoid players", "AutoMotherlodeMine");
+            if (Worldhopping.hopToNext(false)) {
+                playersPresentForTicks.set(16);
+                Utility.sleepGaussian(2600, 3000);
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean handleDepositHopper() {
         if (!shouldDeposit()) return false;
-        if (Walking.getPlayerLocation().distanceTo(DEPOSIT_HOPPER_WORLDPOINT) > 8) {
+        var rMap = LocalPathfinder.getReachabilityMap();
+        if (Walking.getPlayerLocation().distanceTo(DEPOSIT_HOPPER_WORLDPOINT) > 6 ||
+                !rMap.isReachable(DEPOSIT_HOPPER_WORLDPOINT)) {
             var path = WebWalker.findPath(DEPOSIT_HOPPER_WORLDPOINT);
             if (path.isEmpty()) {
                 Utility.sendGameMessage("Failed to find path to hopper: " + DEPOSIT_HOPPER_WORLDPOINT, "AutoMotherlodeMine");
@@ -205,14 +216,18 @@ public class AutoMotherlodeMinePlugin extends Plugin {
             Utility.sendGameMessage("No hopper", "AutoMotherlodeMine");
             return false;
         }
+        var dirtBefore = getDirtQuantity();
         if (!Interaction.clickTileObject(hopper.get(), "Deposit")) {
             Utility.sendGameMessage("Failed to deposit", "AutoMotherlodeMine");
             return false;
+        } else {
+            Utility.sleepUntilCondition(() -> getDirtQuantity() < dirtBefore);
         }
-        if (newTotal > 80) shouldEmptyStack.set(true);
-        Utility.sleepGaussian(600, 1200);
-        if (handleStrutRepair()) {
-            Utility.sleepGaussian(600, 1200);
+        int SACK_CAPACITY = 108;
+        if (newTotal >= SACK_CAPACITY - 10) {
+            shouldEmptySack.set(true);
+        } else {
+            handleStrutRepair();
         }
         return true;
     }
@@ -220,7 +235,7 @@ public class AutoMotherlodeMinePlugin extends Plugin {
     private List<Widget> getExcessiveItemsInInventory() {
         var items = Inventory.search().filter(i -> {
             if (i.getName().contains("Gem bag")) return false;
-            if (i.getName().contains("Coal bag")) return false;
+            if (i.getName().toLowerCase().contains("coal bag")) return false;
             if (i.getName().contains("pickaxe")) return false;
             if (i.getName().contains("Pay-dirt")) return false;
             if (i.getName().contains("Uncut")) return false;
@@ -233,7 +248,7 @@ public class AutoMotherlodeMinePlugin extends Plugin {
     private List<Widget> getItemsToDeposit() {
         var items = Inventory.search().filter(i -> {
             if (i.getName().contains("Gem bag")) return false;
-            if (i.getName().contains("Coal bag")) return false;
+            if (i.getName().toLowerCase().contains("coal bag")) return false;
             if (i.getName().contains("pickaxe")) return false;
             if (i.getName().contains("Pay-dirt")) return false;
             return true;
@@ -253,13 +268,18 @@ public class AutoMotherlodeMinePlugin extends Plugin {
             }
         }
         var depositItems = getItemsToDeposit();
-        if (depositItems.size() == 0) return false;
+        if (depositItems.isEmpty()) return false;
         HashSet<Integer> depositedIds = new HashSet<>();
         for (var item : depositItems) {
             if (depositedIds.contains(item.getItemId())) continue;
             depositedIds.add(item.getItemId());
             Bank.depositAll(item);
             Utility.sleepGaussian(200, 300);
+        }
+        var coalBag = BankInventory.search().withName("Open coal bag").withAction("Empty").first();
+        if (coalBag.isPresent()) {
+            Interaction.clickWidget(coalBag.get(), "Empty");
+            Utility.sleepGaussian(100, 200);
         }
         return true;
     }
@@ -283,13 +303,9 @@ public class AutoMotherlodeMinePlugin extends Plugin {
         return false;
     }
 
-    private boolean inventoryContainsCoal() {
-        return Inventory.search().withName("Coal").first().isPresent();
-    }
-
     private boolean handleSack() {
-        if (!shouldEmptyStack.get() || getQuantityInSack() == 0) {
-            shouldEmptyStack.set(false);
+        if (!shouldEmptySack.get() || getQuantityInSack() == 0) {
+            shouldEmptySack.set(false);
             return false;
         }
         if (Inventory.isFull()) return false;
@@ -307,30 +323,168 @@ public class AutoMotherlodeMinePlugin extends Plugin {
                 return false;
             }
         }
-        Interaction.clickTileObject(sack.get(), "Search");
-        var varbitBefore = getQuantityInSack();
-        if (!Utility.sleepUntilCondition(() -> getQuantityInSack() < varbitBefore, 10000, 200)) {
-            Utility.sendGameMessage("Failed to search sack", "AutoMotherlodeMine");
+
+        Utility.sleepUntilCondition(() -> {
+            if (getQuantityInSack() == 0) {
+                shouldEmptySack.set(false);
+                return true;
+            }
+            if (Inventory.isFull()) {
+                int coalAmount = Inventory.getItemAmount(ItemID.COAL);
+                if (coalAmount >= 6) {
+                    var coalBag = Inventory.search().withName("Open coal bag").withAction("Fill").first();
+                    if (coalBag.isPresent()) {
+                        Utility.sleepGaussian(200, 300);
+                        Interaction.clickWidget(coalBag.get(), "Fill");
+                        boolean didPutCoal = Utility.sleepUntilCondition(() -> Inventory.getItemAmount(ItemID.COAL) < coalAmount, 1200, 100);
+                        return !didPutCoal; // Exit loop if coal bag was full
+                    }
+                }
+                return true;
+            }
+            var nutsack = TileObjects.search().withName("Sack").withAction("Search").nearestToPlayer();
+            if (nutsack.isEmpty()) return true;
+            Interaction.clickTileObject(nutsack.get(), "Search");
+            var varbitBefore = getQuantityInSack();
+            int slotsBefore = Inventory.getEmptySlots();
+            Utility.sleepUntilCondition(() -> getQuantityInSack() < varbitBefore || Inventory.getEmptySlots() < slotsBefore, 10000, 200);
             return false;
-        }
-        if (getQuantityInSack() == 0) {
-            shouldEmptyStack.set(false);
-            return true;
-        }
-        var coalBag = Inventory.search().matchesWildCardNoCase("coal bag*").withAction("Fill").first();
-        if (inventoryContainsCoal() && coalBag.isPresent()) {
-            Interaction.clickWidget(coalBag.get(), "Fill");
-            Utility.sleepGaussian(200, 300);
-            Interaction.clickTileObject(sack.get(), "Search");
-            if (!Utility.sleepUntilCondition(() -> getQuantityInSack() < varbitBefore, 10000, 200)) {
-                Utility.sendGameMessage("Failed to search sack after filling coal bag", "AutoMotherlodeMine");
+        }, 20000, 100);
+
+        return true;
+    }
+
+    private boolean handleEquippingBestPickaxe() throws Exception {
+        if (!config.upgradePickaxe()) return false;
+        if (Inventory.getEmptySlots() < 1) return false;
+        if (shouldEmptySack.get()) return false;
+        var havePickaxe = !Inventory.search().matchesWildcard("*pickaxe").onlyUnnoted().empty() ||
+                !Equipment.search().matchesWildCardNoCase("*pickaxe").empty();
+
+        // Ensure we have ANY pickaxe and then evaluate whether we should check for upgrades based on mining level increases
+
+        if (havePickaxe) {
+            // No need to handle pick switches after dragon pickaxe tier
+            if (Utility.getRealSkillLevel(Skill.MINING) > 61)
+                return false;
+
+            if (Utility.getRealSkillLevel(Skill.MINING) <= previousMiningLevel.get()) {
                 return false;
             }
         }
-        if (getQuantityInSack() == 0) {
-            shouldEmptyStack.set(false);
+
+        previousMiningLevel.set(Utility.getRealSkillLevel(Skill.MINING));
+
+        // Check if inventory has the best pick for the level already and maybe equip it
+        var bestPickForLevel = Pickaxe.getBestPickaxeForMiningLevel();
+        if (bestPickForLevel.isEquipped()) {
+            return false;
+        } else if (bestPickForLevel.canEquip()) {
+            var bestPickForLevelInInventory = bestPickForLevel.findOnPlayer();
+            if (bestPickForLevelInInventory.isPresent()) {
+                Utility.sendGameMessage("Equipping: " + bestPickForLevel.getName(), "AutoMotherlodeMine");
+                Interaction.clickWidget(bestPickForLevelInInventory.get(), "Wield", "Wear", "Equip");
+                Utility.sleepUntilCondition(bestPickForLevel::isEquipped, 3000, 600);
+                return true;
+            }
         }
-        return true;
+
+
+        // Check that bank is updated before determining the best AVAILABLE pickaxe
+        if (!Bank.isBankUpdated()) {
+            Utility.sendGameMessage("Checking for better pickaxes in bank", "AutoMotherlodeMine");
+            WebWalker.walkTo(BANK_CHEST_WORLDPOINT);
+            if (!Bank.openBank() || !Utility.sleepUntilCondition(Bank::isOpen)) {
+                Utility.sendGameMessage("Failed to walk to bank to check for pickaxes", "AutoMotherlodeMine");
+                return false;
+            }
+        }
+
+
+        var bestPickaxe = Pickaxe.getBestAvailablePickaxe();
+        if (bestPickaxe == null) {
+            throw new Exception("No pickaxe detected");
+        }
+
+        if (bestPickaxe.isEquipped()) return false;
+        if (bestPickaxe.findOnPlayer().isPresent()) return false;
+
+        // Best available pickaxe is in the bank
+        if (bestPickaxe.findOnPlayer().isEmpty()) {
+            Utility.sendGameMessage("Getting " + bestPickaxe.getName() + " from bank", "AutoMotherlodeMine");
+            if (!Bank.isOpen() && !WebWalker.walkToNearestBank()) {
+                Utility.sendGameMessage("Failed to walk to bank", "AutoMotherlodeMine");
+                return false;
+            }
+
+            if (Bank.openBank() && Utility.sleepUntilCondition(Bank::isOpen, 10000, 600)) {
+                Utility.sleepGaussian(1200, 1600);
+                var bankPickaxe = bestPickaxe.findInBank();
+                if (bankPickaxe.isPresent()) {
+                    Bank.withdraw(bankPickaxe.get().getItemId(), 1);
+                    if (Utility.sleepUntilCondition(() -> bestPickaxe.findOnPlayer().isPresent(), 3000, 600)) {
+                        Utility.sendGameMessage("Withdrew: " + bestPickaxe.getName(), "AutoMotherlodeMine");
+                    } else {
+                        Utility.sendGameMessage("Failed to withdraw pickaxe", "AutoMotherlodeMine");
+                        havePickaxe = !Inventory.search().matchesWildcard("*pickaxe").onlyUnnoted().empty() ||
+                                Equipment.search().matchesWildCardNoCase("*pickaxe").first().isPresent();
+                        if (!havePickaxe) {
+                            Utility.sendGameMessage("Failed to retrieve a pickaxe", "AutoMotherlodeMine");
+                            stop();
+                            return true;
+                        }
+                    }
+                } else {
+                    Utility.sendGameMessage("No " + bestPickaxe.getName() + " in bank", "AutoMotherlodeMine");
+                    return true;
+                }
+            } else {
+                Utility.sendGameMessage("Failed to open bank to withdraw pickaxe", "AutoMotherlodeMine");
+                return true;
+            }
+        }
+
+        // Best available pickaxe is in inventory but not equipped
+        if (!bestPickaxe.isEquipped() && bestPickaxe.canEquip()) {
+            Utility.sleepGaussian(1200, 1600);
+            var bestPickWidget = bestPickaxe.findOnPlayer();
+            if (bestPickWidget.isPresent()) {
+                Utility.sendGameMessage("Equipping: " + bestPickaxe.getName(), "AutoMotherlodeMine");
+                Interaction.clickWidget(bestPickWidget.get(), "Wield", "Wear", "Equip");
+                Utility.sleepUntilCondition(bestPickaxe::isEquipped, 3000, 600);
+            }
+        }
+
+        // Unequip lower tier pickaxe
+        for (var pickaxe : Pickaxe.values()) {
+            if (pickaxe.getMiningLevel() >= bestPickaxe.getMiningLevel()) continue;
+            if (pickaxe.isEquipped()) {
+                var equipped = pickaxe.findOnPlayer();
+                if (equipped.isPresent()) {
+                    Utility.sendGameMessage("Unequipping: " + pickaxe.getName(), "AutoMotherlodeMine");
+                    Interaction.clickWidget(equipped.get(), "Remove");
+                    Utility.sleepUntilCondition(() -> !pickaxe.isEquipped(), 3000, 600);
+                    break;
+                }
+            }
+        }
+
+        // Deposit all lower tier pickaxes
+        if (Bank.isNearBank() && Bank.openBank() && Utility.sleepUntilCondition(Bank::isOpen, 10000, 600)) {
+            Utility.sendGameMessage("Depositing previous pickaxes", "AutoMotherlodeMine");
+            for (var pickaxe : Pickaxe.values()) {
+                if (pickaxe.getMiningLevel() >= bestPickaxe.getMiningLevel()) continue;
+                var inInventory = pickaxe.findOnPlayer();
+                if (inInventory.isPresent()) {
+                    Bank.depositAll(inInventory.get().getItemId());
+                    Utility.sleepUntilCondition(() -> pickaxe.findOnPlayer().isEmpty(), 3000, 600);
+                }
+            }
+            Bank.closeBank();
+            return true;
+        }
+
+        return false;
     }
 
 
@@ -338,11 +492,22 @@ public class AutoMotherlodeMinePlugin extends Plugin {
         return Inventory.search().withName("Pay-dirt").first().isPresent();
     }
 
+    private boolean handleOpeningCoalBag() {
+        if (shouldEmptySack.get()) return false;
+        var coalBagToOpen = Inventory.search().withName("Coal bag").first();
+        if (coalBagToOpen.isPresent()) {
+            Utility.sendGameMessage("Opening coal sack", "AutoMotherlodeMine");
+            Interaction.clickWidget(coalBagToOpen.get(), "Open");
+            return Utility.sleepUntilCondition(() -> Inventory.search().withName("Coal bag").first().isEmpty());
+        }
+        return false;
+    }
+
     private boolean handleStrutRepair() {
         if (Inventory.isFull()) return false;
+        if (shouldEmptySack.get()) return false;
         var brokenStrut = TileObjects.search().withName("Broken strut").withAction("Hammer").first();
         if (brokenStrut.isEmpty()) return false;
-        if (!inventoryContainsDirt()) return false;
         var inventoryContainsHammer = Inventory.search().withName("Hammer").first().isPresent();
         if (!inventoryContainsHammer) {
             Utility.sendGameMessage("Looting hammer to repair broken struct", "AutoMotherlodeMine");
@@ -352,7 +517,7 @@ public class AutoMotherlodeMinePlugin extends Plugin {
                 return false;
             }
             Interaction.clickTileObject(crate.get(), "Search");
-            if (!Utility.sleepUntilCondition(() -> Inventory.search().withName("Hammer").first().isPresent(), 6000, 200)) {
+            if (!Utility.sleepUntilCondition(() -> Inventory.search().withName("Hammer").first().isPresent())) {
                 Utility.sendGameMessage("Failed to find crate containing hammer", "AutoMotherlodeMine");
                 return false;
             }
@@ -360,13 +525,24 @@ public class AutoMotherlodeMinePlugin extends Plugin {
             if (brokenStrut.isPresent()) {
                 Utility.sendGameMessage("Repairing struct", "AutoMotherlodeMine");
                 Interaction.clickTileObject(brokenStrut.get(), "Hammer");
-                Utility.sleepUntilCondition(() -> TileObjects.search().withName("Broken strut").withAction("Hammer").first().isEmpty(), 20000, 300);
+                var structLoc = brokenStrut.get().getWorldLocation();
+                Utility.sleepUntilCondition(() -> TileObjects.search().withName("Broken strut").withAction("Hammer").withinDistanceToPoint(3, structLoc).first().isEmpty(), 20000, 300);
+            }
+
+            // CHECK FOR OTHER BROKEN STRUCTS IN RARE CASES
+            brokenStrut = TileObjects.search().withName("Broken strut").withAction("Hammer").first();
+            if (brokenStrut.isPresent()) {
+                Utility.sendGameMessage("Repairing struct", "AutoMotherlodeMine");
+                Interaction.clickTileObject(brokenStrut.get(), "Hammer");
+                var structLoc = brokenStrut.get().getWorldLocation();
+                Utility.sleepUntilCondition(() -> TileObjects.search().withName("Broken strut").withAction("Hammer").withinDistanceToPoint(3, structLoc).first().isEmpty(), 20000, 300);
             }
 
             var hammerInInventory = Inventory.search().withName("Hammer").first();
             if (hammerInInventory.isPresent()) {
                 Utility.sendGameMessage("Dropping hammer", "AutoMotherlodeMine");
                 Interaction.clickWidget(hammerInInventory.get(), "Drop");
+                Utility.sleepGaussian(200, 300);
             }
             return true;
         }
@@ -380,13 +556,27 @@ public class AutoMotherlodeMinePlugin extends Plugin {
         return !bankSearchEmpty;
     }
 
-    private int getTotalNuggets() {
+    public static int getTotalNuggets() {
         int inventoryNuggets = Inventory.getItemAmount(ItemID.GOLDEN_NUGGET);
         if (Bank.isBankUpdated()) {
             int bankNuggets = Bank.getQuantityInBank(ItemID.GOLDEN_NUGGET);
             return inventoryNuggets + bankNuggets;
         }
         return inventoryNuggets;
+    }
+
+    private boolean handleToggleRun() {
+        if (Walking.isRunEnabled() || Walking.getRunEnergy() < 15) return false;
+        return Walking.setRun(true);
+    }
+
+    private void trackNearbyPlayersPresence() {
+        var players = Players.search().notLocal().inCuboidArea(config.area().getCuboidArea()).result();
+        if (players.isEmpty()) {
+            playersPresentForTicks.set(0);
+        } else {
+            playersPresentForTicks.set(playersPresentForTicks.get() + 1);
+        }
     }
 
     private boolean handleBuyingItems() {
@@ -398,6 +588,8 @@ public class AutoMotherlodeMinePlugin extends Plugin {
             if (!Bank.openBank() || !Utility.sleepUntilCondition(Bank::isOpen) || !Bank.withdraw(ItemID.GOLDEN_NUGGET, Bank.getQuantityInBank(ItemID.GOLDEN_NUGGET))) {
                 return false;
             }
+            Utility.sleepGaussian(600, 800);
+            if (getTotalNuggets() < 100) return false;
             var prospector = NPCs.search().withName("Prospector Percy").withAction("Trade").first();
             if (prospector.isEmpty()) {
                 return false;
@@ -410,18 +602,18 @@ public class AutoMotherlodeMinePlugin extends Plugin {
         return false;
     }
 
-    private void threadedLoop() {
-        if (paistiBreakHandler.shouldBreak(this) && !shouldEmptyStack.get()) {
+    private void threadedLoop() throws Exception {
+        if (paistiBreakHandler.shouldBreak(this) && !shouldEmptySack.get()) {
             Utility.sendGameMessage("Taking a break", "AutoMotherlodeMine");
             Utility.sleepGaussian(2000, 3000);
             paistiBreakHandler.startBreak(this);
             Utility.sleepGaussian(1000, 2000);
-            Utility.sleepUntilCondition(() -> !paistiBreakHandler.isBreakActive(this) && Utility.isLoggedIn(), 99999999, 5000);
+            Utility.sleepUntilCondition(() -> !paistiBreakHandler.isBreakActive(this), 99999999, 5000);
             return;
         }
         if (!getExcessiveItemsInInventory().isEmpty()) {
             handleDepositExcessItems();
-            log.debug("handleDepositHopper");
+            log.debug("handleDepositExcessItems");
             Utility.sleepGaussian(300, 600);
             return;
         }
@@ -445,6 +637,11 @@ public class AutoMotherlodeMinePlugin extends Plugin {
             Utility.sleepGaussian(300, 600);
             return;
         }
+        if (handleEquippingBestPickaxe()) {
+            log.debug("handleEquippingBestPickaxe");
+            Utility.sleepGaussian(300, 600);
+            return;
+        }
         if (handleWorldHop()) {
             log.debug("handleWorldHop");
             Utility.sleepGaussian(300, 600);
@@ -452,6 +649,16 @@ public class AutoMotherlodeMinePlugin extends Plugin {
         }
         if (handleMining()) {
             log.debug("handleMining");
+            Utility.sleepGaussian(300, 600);
+            return;
+        }
+        if (handleToggleRun()) {
+            log.debug("handleToggleRun");
+            Utility.sleepGaussian(300, 600);
+            return;
+        }
+        if (handleOpeningCoalBag()) {
+            log.debug("handleOpeningCoalBag");
             Utility.sleepGaussian(300, 600);
             return;
         }
@@ -468,6 +675,9 @@ public class AutoMotherlodeMinePlugin extends Plugin {
     }
 
     private void initialize() {
+        int SACK_CAPACITY = 108;
+        if (getQuantityInSack() < SACK_CAPACITY - 10) shouldEmptySack.set(false);
+        previousMiningLevel.set(Utility.getRealSkillLevel(Skill.MINING));
     }
 
 
@@ -482,6 +692,7 @@ public class AutoMotherlodeMinePlugin extends Plugin {
     @Subscribe(priority = 100)
     public void onGameTick(GameTick e) {
         if (!isRunning()) return;
+        if (config.area() != Area.UPPER_AREA) trackNearbyPlayersPresence();
     }
 
     public Duration getRunTimeDuration() {

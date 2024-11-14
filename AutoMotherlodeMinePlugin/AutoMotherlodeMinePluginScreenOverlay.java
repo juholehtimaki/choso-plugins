@@ -26,6 +26,7 @@ public class AutoMotherlodeMinePluginScreenOverlay extends OverlayPanel {
     @Override
     public Dimension render(final Graphics2D graphics) {
         if (!plugin.isRunning()) return null;
+        if (plugin.config.hideScreenOverlay()) return null;
 
         var runtimeMs = plugin.getRunTimeDuration().toMillis();
 
@@ -51,7 +52,14 @@ public class AutoMotherlodeMinePluginScreenOverlay extends OverlayPanel {
         panelComponent.getChildren().add(LineComponent.builder()
                 .left("Sack:")
                 .leftColor(Color.CYAN)
-                .right(String.valueOf(AutoMotherlodeMinePlugin.shouldEmptyStack.get()))
+                .right(String.valueOf(AutoMotherlodeMinePlugin.shouldEmptySack.get()))
+                .rightColor(Color.CYAN)
+                .build());
+
+        panelComponent.getChildren().add(LineComponent.builder()
+                .left("Gold nuggets:")
+                .leftColor(Color.CYAN)
+                .right(String.valueOf(AutoMotherlodeMinePlugin.getTotalNuggets()))
                 .rightColor(Color.CYAN)
                 .build());
 
