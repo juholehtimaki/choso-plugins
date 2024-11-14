@@ -1,10 +1,10 @@
-package com.example.AstralsPlugin;
+package com.theplug.AstralsPlugin;
 
-import com.example.PaistiUtils.API.*;
-import com.example.PaistiUtils.API.Spells.Lunar;
-import com.example.PaistiUtils.Framework.ThreadedScriptRunner;
-import com.example.PaistiUtils.PaistiUtils;
-import com.example.PaistiUtils.PathFinding.WebWalker;
+import com.theplug.PaistiUtils.API.*;
+import com.theplug.PaistiUtils.API.Spells.Lunar;
+import com.theplug.OBS.ThreadedRunner;
+import com.theplug.PaistiUtils.Plugin.PaistiUtils;
+import com.theplug.PaistiUtils.PathFinding.WebWalker;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +20,7 @@ import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.util.HotkeyListener;
 
 @Slf4j
-@PluginDescriptor(name = "PAstrals", description = "Crafts Astral Runes", enabledByDefault = false, tags = {"Runecrafting", "Paisti"})
+@PluginDescriptor(name = "<HTML><FONT COLOR=#1BB532>PAstrals</FONT></HTML>", description = "Crafts Astral Runes", enabledByDefault = false, tags = {"paisti", "runecrafting"})
 public class AstralsPlugin extends Plugin {
     static final WorldPoint BANK_SPOT = new WorldPoint(2099, 3919, 0);
     static final WorldPoint ASTRAL_ALTAR_SPOT = new WorldPoint(2156, 3863, 0);
@@ -31,7 +31,7 @@ public class AstralsPlugin extends Plugin {
     PluginManager pluginManager;
     @Inject
     private KeyManager keyManager;
-    ThreadedScriptRunner runner = new ThreadedScriptRunner();
+    ThreadedRunner runner = new ThreadedRunner();
     private HotkeyListener startHotkeyListener = null;
 
     static final int BROKEN_MEDIUM_POUCH_ID = 5511;
@@ -44,13 +44,6 @@ public class AstralsPlugin extends Plugin {
 
     @Override
     protected void startUp() throws Exception {
-        var paistiUtilsPlugin = pluginManager.getPlugins().stream().filter(p -> p instanceof PaistiUtils).findFirst();
-        if (paistiUtilsPlugin.isEmpty() || !pluginManager.isPluginEnabled(paistiUtilsPlugin.get())) {
-            log.info("PAstrals: PaistiUtils is required for this plugin to work");
-            pluginManager.setPluginEnabled(this, false);
-            return;
-        }
-
         runner.setLoopAction(() -> {
             this.threadedLoop();
             return null;
@@ -98,7 +91,7 @@ public class AstralsPlugin extends Plugin {
             }
             Interaction.clickTileObject(astralAltar.get(), "Craft-rune");
             Utility.sleepUntilCondition(() -> Inventory.getItemAmount("Pure essence") == 0, 3000);
-            var pouches = Inventory.search().matchesWildCardNoCase("*pouch*").filter(p -> !p.getName().contains("Rune")).result();
+            var pouches = Inventory.search().matchesWildcard("*pouch*").filter(p -> !p.getName().contains("Rune")).result();
             for (var p : pouches) {
                 Interaction.clickWidget(p, "Empty");
                 Utility.sleepGaussian(150, 300);
@@ -120,7 +113,7 @@ public class AstralsPlugin extends Plugin {
         }
 
         if (Inventory.getItemAmount(BROKEN_MEDIUM_POUCH_ID) > 0 || Inventory.getItemAmount(BROKEN_LARGE_POUCH_ID) > 0) {
-            Lunar.NPC_CONTACT.cast("Dark Mage");
+            Lunar.NPC_CONTACT.tryCast("Dark Mage");
             Utility.sleepUntilCondition(Dialog::isConversationWindowUp);
             Utility.sendGameMessage("Attempted to repair pouches", "PAstrals");
             var dialogOptions = new String[]{
@@ -157,7 +150,7 @@ public class AstralsPlugin extends Plugin {
                 Utility.sendGameMessage("Could not withdraw pure essences", "PAstrals");
                 stop();
             }
-            var pouches = BankInventory.search().matchesWildCardNoCase("*pouch*").filter(p -> !p.getName().contains("Rune")).result();
+            var pouches = BankInventory.search().matchesWildcard("*pouch*").filter(p -> !p.getName().contains("Rune")).result();
             for (var p : pouches) {
                 Interaction.clickWidget(p, "Fill");
                 Utility.sleepGaussian(150, 300);
@@ -208,19 +201,15 @@ public class AstralsPlugin extends Plugin {
     }
 
     private void threadedLoop() {
-        try {
-            if (!Utility.isLoggedIn()) {
-                stop();
-                return;
-            }
-            Utility.sleepGaussian(300, 500);
-            if (Inventory.getItemAmount("Pure essence") == 0) {
-                handleBanking();
-            } else {
-                handleEssenceCrafting();
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+        if (!Utility.isLoggedIn()) {
+            stop();
+            return;
+        }
+        Utility.sleepGaussian(300, 500);
+        if (Inventory.getItemAmount("Pure essence") == 0) {
+            handleBanking();
+        } else {
+            handleEssenceCrafting();
         }
     }
 }

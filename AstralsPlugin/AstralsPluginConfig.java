@@ -1,6 +1,5 @@
-package com.example.AstralsPlugin;
+package com.theplug.AstralsPlugin;
 
-import com.example.BlackjackerPlugin.BlackjackerPlugin;
 import net.runelite.client.config.*;
 
 @ConfigGroup("AstralsPluginConfig")
